@@ -21,6 +21,7 @@ from datetime import timedelta
 import yfinance as yf
 import seaborn as sns
 import nselib
+from tabulate import tabulate
 from Algorithms.getData import getDataFrame
 from Algorithms.MovingAvg import SMA
 from Algorithms.Linear import linear

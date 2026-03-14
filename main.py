@@ -1,10 +1,7 @@
-import matplotlib.pyplot as plt
-import pandas as pd
 from Algorithms import *
-from tabulate import tabulate
 
 
-scheme_code = input('Enter the MF Scheme code:- ')
+scheme_code = input('Enter the NSE Share Symbol:- ')
 
 
 @getDataFrame(scheme_code)
@@ -44,7 +41,7 @@ def forecasting_mutual_fund(df, details):
     # plt.plot(np.append(Y,pred_expo), color='yellow',label='Exponential')
     # plt.plot(np.append(Y, pred_LSTM), color='orange', label='LSTM')
     plt.xlabel('Days [last 100 + 5 forecasted]')
-    plt.ylabel('Share Price')
+    plt.ylabel('Price in Rupees')
     plt.title("Forecasting for " + details['scheme_name'])
     plt.legend()
     s = df_predicted._append(pd.Series([np.nan for i in range(5)]))
