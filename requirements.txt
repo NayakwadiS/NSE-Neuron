@@ -1,0 +1,11 @@
+tabulate==0.8.7
+pandas
+numpy
+matplotlib
+mftool==2.6
+scikit-learn
+statsmodels
+tensorflow>=2.5.1
+seaborn
+flask
+nselib
