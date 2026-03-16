@@ -6,12 +6,11 @@ scheme_code = input('Enter the NSE Share Symbol:- ')
 
 @getDataFrame(scheme_code)
 def forecasting_mutual_fund(df, details):
-    # pred_SMA = SMA(df)
     pred_linear, rmse_linear = linear(df)
     pred_autoReg, rmse_auto = AutoR(df)
-    pred_arima, rmse_arima = arima(df)
+    pred_arima, rmse_arima = arima_new(df)
     pred_expo, rmse_expo = exponential(df)
-    # pred_arima, rmse_arima = arima_new(df)
+    # pred_arima, rmse_arima = arima(df)
     pred_LSTM, rmse_lstm = lstm(df)
 
     data = [
@@ -34,12 +33,6 @@ def forecasting_mutual_fund(df, details):
     df_predicted = pd.to_numeric(df['close'].iloc[-100:], errors='coerce').dropna()
     Y = [np.nan for i in range(len(df_predicted))]
 
-    # plt.plot(df_predicted.values, color='black', label='Trend')  # last 100 days
-    # plt.plot(np.append(Y, pred_linear), color='green', label="Linear")
-    # plt.plot(np.append(Y, pred_autoReg), color='blue', label="Auto Regression")
-    # plt.plot(np.append(Y,pred_arima), color='red',label='ARIMA')
-    # plt.plot(np.append(Y,pred_expo), color='yellow',label='Exponential')
-    # plt.plot(np.append(Y, pred_LSTM), color='orange', label='LSTM')
     plt.xlabel('Days [last 100 + 5 forecasted]')
     plt.ylabel('Price in Rupees')
     plt.title("Forecasting for " + details['scheme_name'])

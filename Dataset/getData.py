@@ -1,6 +1,6 @@
 from nselib import capital_market
-from Algorithms import *
-
+import pandas as pd
+import yfinance as yf
 
 def getDataFrame(SYMBOL):
     def decorate(func):

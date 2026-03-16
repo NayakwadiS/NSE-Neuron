@@ -1,5 +1,4 @@
 import math
-from mftool import Mftool
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -22,7 +21,7 @@ import yfinance as yf
 import seaborn as sns
 import nselib
 from tabulate import tabulate
-from Algorithms.getData import getDataFrame
+from Dataset.getData import getDataFrame
 from Algorithms.MovingAvg import SMA
 from Algorithms.Linear import linear
 from Algorithms.AutoRegression import AutoR

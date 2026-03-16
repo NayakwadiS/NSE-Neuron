@@ -51,45 +51,49 @@ def arima(df):
 
 
 def arima_new(df):
-    df.index = df['date']
+    # Convert 'close' to numeric and handle any non-numeric values
+    df['close'] = pd.to_numeric(df['close'], errors='coerce')
+
+    # Convert date to datetime and set as index, removing duplicates
+    df['date'] = pd.to_datetime(df['date'], errors='coerce')
+    df = df.drop_duplicates(subset='date', keep='first')
+
+    # Drop rows with NaN in 'close' column before setting index
+    df = df.dropna(subset=['close'])
+    df.index = pd.DatetimeIndex(df['date'])
+
     df['rolling_av'] = df['close'].rolling(10).mean()
-    # df[['nav', 'rolling_av']].plot()
-
-    def plot_acf_pacf(timeseries):
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 7))
-        plot_acf(timeseries, ax=ax1, lags=100)
-        plot_pacf(timeseries, ax=ax2, lags=100)
-        # plt.show()
-
-    # Plotting ACF and PACF of the closing value time series,
-    # https://www.geeksforgeeks.org/understanding-the-moving-average-ma-in-time-series-data/
-    # plot_acf_pacf(df['nav'])
 
     # creating the model
     MA_model = ARIMA(endog=df['close'], order=(0, 0, 55))
 
     # fitting data to the model
     results = MA_model.fit()
-    # values = arimaorder(results)
     # summary of the model
     print(results.summary())
 
     # prediction data
-    start_date = df.iloc[-10].date
-    end_date = df.iloc[-1].date
-    # start_date = date.today().strftime('%Y-%m-%d')
-    # end_date = (date.today() + timedelta(days=days)).strftime('%Y-%m-%d')
-    df['prediction'] = results.predict(start=start_date, end=end_date)
-    rmse = math.sqrt(mean_squared_error(df['nav'][-10:], df['prediction'][-10:]))
+    start_date = df.index[-5]
+    end_date = df.index[-1]
+    predictions = results.predict(start=start_date, end=end_date)
 
-    # printing last 10 values of the prediction with original and rolling avg value
-    print(df[['close', 'prediction', 'rolling_av']].tail(10))
+    # Align predictions with dataframe index
+    df.loc[predictions.index, 'prediction'] = predictions.values
 
-    # Forecast future values
+    # Calculate RMSE only on rows where both close and prediction are not NaN
+    last_5 = df[['close', 'prediction']].tail(5).dropna()
+
+    if len(last_5) > 0:
+        rmse = math.sqrt(mean_squared_error(last_5['close'], last_5['prediction']))
+    else:
+        rmse = float('nan')
+
+    # printing last 5 values of the prediction with original and rolling avg value
+    print(df[['close', 'prediction', 'rolling_av']].tail(5))
+
     # Forecast future closing prices
-    forecast_steps = 30  # Forecasting for the next 30 days
-    forecast_index = pd.date_range(start=df['close'].index[-1], periods=forecast_steps + 1, freq='D')[
-                     1:]  # Generate datetime index for forecast
+    forecast_steps = 5  # Forecasting for the next 5 days
+    forecast_index = pd.date_range(start=df.index[-1], periods=forecast_steps + 1, freq='D')[1:]
     forecast = results.forecast(steps=forecast_steps)
 
     # plotting the end results
