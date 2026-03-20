@@ -20,7 +20,6 @@ def forecasting_mutual_fund(df, details):
     data.append(max_vals)
     print("\n  Time Series Forecasting for " + details['scheme_name'] + " (" + str(details['scheme_code']) + ")\n")
     print(tabulate(data, headers=["Day", "Open", "High", "Low", "Close", "Prev_Close"], tablefmt='orgtbl'))
-
     # Plotting
     plot_candlestick_with_forecast(df, details, pred_LSTM)
 
