@@ -1,53 +1,27 @@
 from Algorithms import *
-
+from plots.plloting import plot_candlestick_with_forecast
 
 scheme_code = input('Enter the NSE Share Symbol:- ')
 
 
 @getDataFrame(scheme_code)
 def forecasting_mutual_fund(df, details):
-    pred_linear, rmse_linear = linear(df)
-    pred_autoReg, rmse_auto = AutoR(df)
-    pred_arima, rmse_arima = arima_new(df)
-    pred_expo, rmse_expo = exponential(df)
-    # pred_arima, rmse_arima = arima(df)
     pred_LSTM, rmse_lstm = lstm(df)
-
-    data = [
-        ['Linear', pred_linear[0], pred_linear[1], pred_linear[2], pred_linear[3], pred_linear[4]
-            , min(pred_linear), max(pred_linear)],
-        ['Auto Regression',pred_autoReg[0], pred_autoReg[1],pred_autoReg[2],pred_autoReg[3]
-            ,pred_autoReg[4],min(pred_autoReg),max(pred_autoReg)],
-        ['ARIMA', pred_arima[0], pred_arima[1], pred_arima[2], pred_arima[3], pred_arima[4],
-         min(pred_arima), max(pred_arima)],
-        ['Exponential', pred_expo[0], pred_expo[1], pred_expo[2], pred_expo[3], pred_expo[4],
-         min(pred_expo), max(pred_expo)],
-        ['LSTM', pred_LSTM[0], pred_LSTM[1],pred_LSTM[2],pred_LSTM[3],pred_LSTM[4]
-            ,min(pred_LSTM),max(pred_LSTM)]
-    ]
+    plot_candlestick_with_forecast(df, details, pred_LSTM)
+    # Prepare table data for tabulate
+    data = []
+    for i in range(5):
+        row = [f'Day {i+1}'] + list(pred_LSTM[i])
+        data.append(row)
+    # Calculate min/max for each column
+    min_vals = ['Min'] + list(np.min(pred_LSTM, axis=0))
+    max_vals = ['Max'] + list(np.max(pred_LSTM, axis=0))
+    data.append(min_vals)
+    data.append(max_vals)
     print("\n  Time Series Forecasting for " + details['scheme_name'] + " (" + str(details['scheme_code']) + ")\n")
-    print(tabulate(data, headers=["Algorithm", "Day 1", "Day 2", "Day 3", "Day 4", "Day 5",
-                                  "1 Month Low", "1 Month High"], tablefmt='orgtbl'))
+    print(tabulate(data, headers=["Day", "Open", "High", "Low", "Close", "Prev_Close"], tablefmt='orgtbl'))
 
-    # Robust conversion of 'nav' to float for last 100 days
-    df_predicted = pd.to_numeric(df['close'].iloc[-100:], errors='coerce').dropna()
-    Y = [np.nan for i in range(len(df_predicted))]
-
-    plt.xlabel('Days [last 100 + 5 forecasted]')
-    plt.ylabel('Price in Rupees')
-    plt.title("Forecasting for " + details['scheme_name'])
-    plt.legend()
-    s = df_predicted._append(pd.Series([np.nan for i in range(5)]))
-    sns.set(style="ticks")
-    data_preproc = pd.DataFrame({
-        'Trends': s.values,
-        'Linear': np.append(Y, pred_linear),
-        'Auto Regression': np.append(Y, pred_autoReg),
-        'ARIMA': np.append(Y, pred_arima),
-        'Exponential': np.append(Y, pred_expo),
-        'LSTM': np.append(Y, pred_LSTM),
-    })
-    sns.lineplot(data=data_preproc)
-    plt.show()
+    # Plotting
+    plot_candlestick_with_forecast(df, details, pred_LSTM)
 
 forecasting_mutual_fund()

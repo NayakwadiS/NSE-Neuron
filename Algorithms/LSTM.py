@@ -3,88 +3,73 @@ from Algorithms import *
 
 def lstm(df):
     days = 5
-    df1 = pd.to_numeric(df['close'], errors='coerce').dropna()
+    # Select relevant columns and ensure numeric types
+    feature_cols = ['open', 'high', 'low', 'close', 'prev_close']
+    df_features = df[feature_cols].apply(pd.to_numeric, errors='coerce').dropna()
 
-    # LSTM are sensitive to the scale of the data. so we apply MinMax scaler
-    scaler=MinMaxScaler(feature_range=(0,1))
-    df1=scaler.fit_transform(np.array(df1).reshape(-1,1))       # convert to 2d array
+    # Apply MinMax scaler to all features
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    df_scaled = scaler.fit_transform(df_features)
 
-    # splitting dataset into train 80% and test split 20%
-    training_size=int(len(df1)*0.80)
-    test_size=len(df1)-training_size
-    train_data,test_data=df1[0:training_size,:],df1[training_size:len(df1),:1]
+    # Split dataset into train 80% and test 20%
+    training_size = int(len(df_scaled) * 0.80)
+    test_size = len(df_scaled) - training_size
+    train_data, test_data = df_scaled[0:training_size, :], df_scaled[training_size:len(df_scaled), :]
 
-    # convert an array of values into a dataset matrix
+    # Convert array of values into a dataset matrix for multivariate
     def create_dataset(dataset, time_step=1):
         dataX, dataY = [], []
-        for i in range(len(dataset)-time_step-1):
-            a = dataset[i:(i+time_step), 0]   ###i=0, 0,1,2,3-----99   100
+        for i in range(len(dataset) - time_step - 1):
+            a = dataset[i:(i + time_step), :]  # shape: (time_step, features)
             dataX.append(a)
-            dataY.append(dataset[i + time_step, 0])
+            dataY.append(dataset[i + time_step, :])  # Predict all features
         return np.array(dataX), np.array(dataY)
 
-    # reshape into X=t,t+1,t+2,t+3 and Y=t+4
     time_step = 10
     X_train, y_train = create_dataset(train_data, time_step)
     X_test, ytest = create_dataset(test_data, time_step)
 
-    # reshape input to be [samples, time steps, features] which is required for LSTM (3d array)
-    X_train =X_train.reshape(X_train.shape[0],X_train.shape[1],1)
-    X_test = X_test.reshape(X_test.shape[0],X_test.shape[1],1)
+    # Reshape input to be [samples, time steps, features]
+    X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], X_train.shape[2])
+    X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], X_test.shape[2])
 
     # Create the Stacked LSTM model
-    model=Sequential()
-    model.add(LSTM(10,return_sequences=True,input_shape=(10,1)))
-    model.add(LSTM(10,return_sequences=True))
+    model = Sequential()
+    model.add(LSTM(10, return_sequences=True, input_shape=(time_step, len(feature_cols))))
+    model.add(LSTM(10, return_sequences=True))
     model.add(LSTM(10))
-    model.add(Dense(1))
-    model.compile(loss='mean_squared_error',optimizer='adam')
-    # print(model.summary())
+    model.add(Dense(len(feature_cols)))  # Output all features
+    model.compile(loss='mean_squared_error', optimizer='adam')
 
-    model.fit(X_train,y_train,validation_data=(X_test,ytest),epochs=5,batch_size=64,verbose=1)
-    ### Lets Do the prediction and check performance metrics
-    train_predict=model.predict(X_train)
-    test_predict=model.predict(X_test)
+    model.fit(X_train, y_train, validation_data=(X_test, ytest), epochs=5, batch_size=64, verbose=1)
 
-    ##Transformback to original form
-    train_predict=scaler.inverse_transform(train_predict)
-    test_predict=scaler.inverse_transform(test_predict)
+    # Prediction and performance metrics
+    train_predict = model.predict(X_train)
+    test_predict = model.predict(X_test)
 
-    ### Calculate RMSE performance metrics
-    rmse= math.sqrt(mean_squared_error(y_train,train_predict))
-    # print('mean sqrt error -',math.sqrt(mean_squared_error(y_train,train_predict)))
-    # print("len of test data -",len(test_data))
+    # Inverse transform all columns
+    train_predict = scaler.inverse_transform(train_predict)
+    test_predict = scaler.inverse_transform(test_predict)
 
-    x_input=test_data[len(test_data)-10:].reshape(1,-1)
-    # print(x_input.shape)
+    # Calculate RMSE for each feature
+    rmse = {}
+    for idx, col in enumerate(feature_cols):
+        rmse[col] = math.sqrt(mean_squared_error(y_train[:, idx], train_predict[:, idx]))
 
-    temp_input=list(x_input)
-    temp_input=temp_input[0].tolist()
-    # print(temp_input)
-
+    # Forecast future values with prev_close chaining
+    x_input = test_data[len(test_data) - time_step:].copy()
     lst_output = []
-    n_steps = 10
-    i = 0
-    while (i < days):
+    n_steps = time_step
+    for i in range(days):
+        x_input_seq = x_input.reshape(1, n_steps, len(feature_cols))
+        yhat = model.predict(x_input_seq, verbose=0)[0]
+        # Inverse transform prediction
+        yhat_inv = scaler.inverse_transform(yhat.reshape(1, -1))[0]
+        lst_output.append(yhat_inv)
+        # Prepare next input: shift, update prev_close
+        x_input = np.vstack([x_input[1:], scaler.transform(yhat_inv.reshape(1, -1))])
+        # Set prev_close for next step to predicted close
+        x_input[-1, 4] = scaler.transform(yhat_inv.reshape(1, -1))[0, 3]  # prev_close = predicted close (scaled)
 
-        if (len(temp_input) > 10):
-            x_input = np.array(temp_input[1:])
-            x_input = x_input.reshape(1, -1)
-            x_input = x_input.reshape((1, n_steps, 1))
-            yhat = model.predict(x_input, verbose=0)
-            # print("{} day output {}".format(i, yhat))
-            temp_input.extend(yhat[0].tolist())
-            temp_input = temp_input[1:]
-            lst_output.extend(yhat.tolist())
-            i = i + 1
-        else:
-            x_input = x_input.reshape((1, n_steps, 1))
-            yhat = model.predict(x_input, verbose=0)
-            temp_input.extend(yhat[0].tolist())
-            lst_output.extend(yhat.tolist())
-            i = i + 1
-
-    # Getting original prices back from scaled values
-    forecasted_stock_price = scaler.inverse_transform(lst_output)
-    # print('forecasted nav range -',forecasted_stock_price)
+    forecasted_stock_price = np.array(lst_output)
     return forecasted_stock_price, rmse

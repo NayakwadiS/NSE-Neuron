@@ -6,8 +6,8 @@ def getDataFrame(SYMBOL):
     def decorate(func):
         def decorated(*args,**kwargs):
             df = capital_market.price_volume_and_deliverable_position_data(symbol='SBIN', period='1Y')
-            df = df[['Date', 'ClosePrice']]
-            df = df.rename(columns={'ClosePrice': 'close'})
+            df = df[['Date', 'ClosePrice','PrevClose', 'OpenPrice', 'HighPrice','LowPrice']]
+            df = df.rename(columns={'ClosePrice': 'close', 'PrevClose': 'prev_close', 'OpenPrice': 'open', 'HighPrice': 'high', 'LowPrice': 'low'})
             df.reset_index(inplace=True)
             # Ensure the 'Date' column is in datetime format
             df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
