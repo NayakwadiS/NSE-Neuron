@@ -13,6 +13,7 @@ from pandas.plotting import autocorrelation_plot,lag_plot
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import LSTM
+from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.preprocessing import MinMaxScaler
 import datetime as dt
 from datetime import date
