@@ -49,7 +49,7 @@ def plot_candlestick_with_forecast(df, details, pred_LSTM):
         type='candle',
         style='charles',
         ylabel='Price in Rupees',
-        title=f"Forecast for {details['scheme_name']}",
+        title=f"Predictions for {details['scheme_name']}",
         volume=False,
         addplot=ap,
         warn_too_much_data=200,

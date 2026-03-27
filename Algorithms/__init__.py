@@ -14,7 +14,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import LSTM
 from tensorflow.keras.layers import Bidirectional
-from tensorflow.keras.layers import Dense, LSTM as KerasLSTM, Bidirectional, GRU
+from tensorflow.keras.layers import Dense, LSTM as KerasLSTM, Bidirectional, GRU, Conv1D, MaxPooling1D, Flatten, TimeDistributed
 from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.preprocessing import MinMaxScaler
 import datetime as dt
@@ -28,5 +28,6 @@ from Dataset.getData import getDataFrame
 from Algorithms.LSTM import lstm
 from Algorithms.BiLSTM import bilstm
 from Algorithms.GRU import gru
+from Algorithms.CNN_LSTM import cnn_lstm
 from Algorithms.ARIMA import arima
 from Algorithms.ARIMA import arima_new
