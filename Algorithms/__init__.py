@@ -13,6 +13,8 @@ from pandas.plotting import autocorrelation_plot,lag_plot
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import LSTM
+from tensorflow.keras.layers import Bidirectional
+from tensorflow.keras.layers import Dense, LSTM as KerasLSTM, Bidirectional
 from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.preprocessing import MinMaxScaler
 import datetime as dt
@@ -27,6 +29,7 @@ from Algorithms.MovingAvg import SMA
 from Algorithms.Linear import linear
 from Algorithms.AutoRegression import AutoR
 from Algorithms.LSTM import lstm
+from Algorithms.BiLSTM import bilstm
 from Algorithms.ARIMA import arima
 from Algorithms.ARIMA import arima_new
 from Algorithms.ExponentialSmoothing import exponential
