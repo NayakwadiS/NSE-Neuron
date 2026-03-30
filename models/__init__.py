@@ -26,7 +26,7 @@ import yfinance as yf
 import seaborn as sns
 import nselib
 from tabulate import tabulate
-from dataset.getData import getDataFrame
+from utils.data_fetcher import getDataFrame
 from models.lstm import lstm
 from models.bilstm import bilstm
 from models.gru import gru
