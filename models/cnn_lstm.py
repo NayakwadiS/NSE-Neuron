@@ -7,7 +7,7 @@ from config import (
     EARLY_STOPPING_MONITOR,
     EARLY_STOPPING_PATIENCE,
     EPOCHS,
-    BATCH_SIZE
+    BATCH_SIZE, CNN_FILTERS_1, CNN_KERNEL_SIZE, CNN_FILTERS_2, CNN_N_SEQ, CNN_SUB_STEPS, CNN_TIME_STEP
 )
 
 
@@ -42,9 +42,9 @@ def cnn_lstm(df):
     # the full time_step window is split into n_seq subsequences of sub_steps each.
     # CNN extracts local features from each subsequence,
     # then LSTM captures temporal dependencies across subsequences.
-    n_seq     = config.CNN_N_SEQ   # number of subsequences (LSTM time steps)
-    sub_steps = config.CNN_SUB_STEPS   # timesteps per subsequence (CNN input length)
-    time_step = config.CNN_TIME_STEP   # total lookback
+    n_seq     = CNN_N_SEQ   # number of subsequences (LSTM time steps)
+    sub_steps = CNN_SUB_STEPS   # timesteps per subsequence (CNN input length)
+    time_step = CNN_TIME_STEP   # total lookback
 
     n_features = df_model.shape[1]
 
@@ -68,17 +68,17 @@ def cnn_lstm(df):
     # LSTM block: learns long-range temporal dependencies across the CNN feature maps
     model = Sequential([
         # CNN feature extractor applied independently to each of the n_seq sub-sequences
-        TimeDistributed(Conv1D(filters=config.CNN_FILTERS_1, kernel_size=config.CNN_KERNEL_SIZE,
+        TimeDistributed(Conv1D(filters=CNN_FILTERS_1, kernel_size=CNN_KERNEL_SIZE,
                               activation='relu', padding='same'),
                         input_shape=(n_seq, sub_steps, n_features)),
         TimeDistributed(MaxPooling1D(pool_size=2, padding='same')),
-        TimeDistributed(Conv1D(filters=config.CNN_FILTERS_2, kernel_size=config.CNN_KERNEL_SIZE,
+        TimeDistributed(Conv1D(filters=CNN_FILTERS_2, kernel_size=CNN_KERNEL_SIZE,
                               activation='relu', padding='same')),
         TimeDistributed(Flatten()),
 
         # LSTM reads the sequence of CNN feature vectors across n_seq windows
-        KerasLSTM(config.RNN_UNITS, return_sequences=True),
-        KerasLSTM(config.RNN_UNITS),
+        KerasLSTM(RNN_UNITS, return_sequences=True),
+        KerasLSTM(RNN_UNITS),
 
         # Output layer predicts all features at once
         Dense(n_features),
