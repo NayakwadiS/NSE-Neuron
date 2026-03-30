@@ -1,8 +1,10 @@
 from models import *
+from .base_model import BaseModel
 from config import (
     FORECAST_DAYS,
     FEATURE_COLUMNS,
     TIME_STEP,
+    TRAIN_TEST_SPLIT,
     RNN_UNITS,
     EARLY_STOPPING_MONITOR,
     EARLY_STOPPING_PATIENCE,
@@ -34,7 +36,7 @@ def gru(df):
     df_scaled = scaler.fit_transform(df_model)
 
     # Split dataset into train 80% and test 20%
-    training_size = int(len(df_scaled) * 0.80)
+    training_size = int(len(df_scaled) * TRAIN_TEST_SPLIT)
     train_data = df_scaled[0:training_size, :]
     test_data  = df_scaled[training_size:len(df_scaled), :]
 
