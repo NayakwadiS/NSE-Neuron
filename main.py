@@ -3,18 +3,14 @@ from visualization.ploting import plot_candlestick_with_forecast
 import config
 
 scheme_code = input('Enter the NSE Share Symbol:- ')
-algorithm = input('Select the algorithm for forecasting '
-                  '1.LSTM '
-                  '2.BiLSTM '
-                  '3.GRU '
-                  '4.CNN-LSTM:- ')
+choice = input("Select the algorithm for forecasting:\n1. LSTM\n2. BiLSTM\n3. GRU\n4. CNN-LSTM\nSelection: ")
 
 
 @getDataFrame(scheme_code)
-def forecasting_mutual_fund(df, details, algorithm):
+def forecasting_mutual_fund(df, details, choice):
     signals = None  # only populated for LSTM
 
-    match algorithm:
+    match choice:
         case '1':
             pred, rmse = lstm(df)
             print("\n  Running LSTM Classifier for BUY/SELL/HOLD signals...\n")
@@ -54,4 +50,4 @@ def forecasting_mutual_fund(df, details, algorithm):
     # Plotting
     plot_candlestick_with_forecast(df, details, pred, signals)
 
-forecasting_mutual_fund(algorithm)
+forecasting_mutual_fund(choice)

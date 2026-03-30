@@ -84,7 +84,7 @@ CLASSIFIER_DROPOUT = 0.2
 # BUY:  next day return > +CLASSIFIER_THRESHOLD
 # SELL: next day return < -CLASSIFIER_THRESHOLD
 # HOLD: otherwise
-CLASSIFIER_THRESHOLD = 0.01  # 1% threshold
+CLASSIFIER_THRESHOLD = 0.005  # 0.5% threshold
 
 # Train/val split for classifier
 CLASSIFIER_TRAIN_SPLIT = 0.80

@@ -169,8 +169,6 @@ def _make_labels(close_series, threshold=None):
       HOLD (1): otherwise
     Returns a Series with the SAME index as close_series.
     """
-    if threshold is None:
-        threshold = CLASSIFIER_THRESHOLD
     nr = close_series.pct_change(1).shift(-1)
     return pd.Series(
         np.where(nr > threshold, 2, np.where(nr < -threshold, 0, 1)),
@@ -211,7 +209,7 @@ def lstm_classifier(df, pred_prices):
     # ── 3. Labels — aligned via the SAME index as feat_df ────────────────────
     # Use raw['close'] at exactly the same row positions feat_df kept
     close_aligned = raw['close'].loc[feat_df.index]   # same index → perfect alignment
-    labels        = _make_labels(close_aligned, threshold=0.01)
+    labels        = _make_labels(close_aligned, threshold=CLASSIFIER_THRESHOLD)
 
     # Verify alignment (sanity check)
     assert len(feat_df) == len(labels), "Feature/label length mismatch!"
