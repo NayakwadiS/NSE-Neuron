@@ -2,11 +2,11 @@ import mplfinance as mpf
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+from matplotlib.lines import Line2D
 
 
-def plot_candlestick_with_forecast(df, details, pred_LSTM):
-    # Candlestick Plot for last 100 days
-    # Prepare historical OHLC data with DatetimeIndex
+def plot_candlestick_with_forecast(df, details, pred_LSTM, signals=None):
+    # ── Historical OHLC (last 100 days) ──────────────────────────────────────
     df_ohlc = df[['Date', 'high', 'low', 'close']].copy()
     df_ohlc['Date'] = pd.to_datetime(df_ohlc['Date'], errors='coerce')
     for col in ['high', 'low', 'close']:
@@ -22,16 +22,19 @@ def plot_candlestick_with_forecast(df, details, pred_LSTM):
     df_ohlc.index = pd.DatetimeIndex(df_ohlc.index)
 
     close_pred = pred_LSTM[:, 2]   # index 2 = close
-    last_date = df_ohlc.index[-1]
+    high_pred  = pred_LSTM[:, 0]   # index 0 = high
+    low_pred   = pred_LSTM[:, 1]   # index 1 = low
+
+    last_date    = df_ohlc.index[-1]
     future_dates = pd.bdate_range(start=last_date + pd.Timedelta(days=1), periods=5)
 
     # Use len(df_ohlc) for correct alignment
     nan_pad = [np.nan] * len(df_ohlc)
     close_line = nan_pad + list(close_pred)
-    high_line  = nan_pad + list(pred_LSTM[:, 0])   # index 0 = high
-    low_line   = nan_pad + list(pred_LSTM[:, 1])   # index 1 = low
+    high_line  = nan_pad + list(high_pred)
+    low_line   = nan_pad + list(low_pred)
 
-    # Extend df_ohlc with forecast rows (NaN OHLC) so mplfinance covers full date range
+    # Extend df_ohlc with NaN forecast rows so mplfinance covers full date range
     df_forecast = pd.DataFrame(
         {'Open': np.nan, 'High': np.nan, 'Low': np.nan, 'Close': np.nan},
         index=future_dates
@@ -55,4 +58,65 @@ def plot_candlestick_with_forecast(df, details, pred_LSTM):
         warn_too_much_data=200,
         returnfig=True
     )
+
+    ax = axes[0]
+
+    # ── Overlay BUY / SELL / HOLD signal markers ─────────────────────────────
+    if signals:
+        COLORS  = {'BUY': '#22c55e', 'SELL': '#ef4444', 'HOLD': '#f59e0b'}
+        MARKERS = {'BUY': '^',       'SELL': 'v',        'HOLD': 'o'}
+        OFFSETS = {'BUY': -0.03,     'SELL':  0.03,      'HOLD': 0.0}
+
+        # x-axis positions: historical bars occupy 0 … len(df_ohlc)-1,
+        # forecast bars start at len(df_ohlc)
+        base_x = len(df_ohlc)
+
+        for i, sig in enumerate(signals):
+            x_pos  = base_x + i
+            label  = sig['label']
+            conf   = sig['confidence']
+            color  = COLORS[label]
+            marker = MARKERS[label]
+            # Place marker slightly above/below the forecast close price
+            y_price = close_pred[i]
+            y_offset = y_price * (1 + OFFSETS[label] * 2)
+
+            ax.plot(x_pos, y_offset, marker=marker, color=color,
+                    markersize=12, zorder=5, markeredgecolor='white', markeredgewidth=0.8)
+
+            # Confidence label
+            ax.annotate(
+                f"{label}\n{conf}%",
+                xy=(x_pos, y_offset),
+                xytext=(6, 0),
+                textcoords='offset points',
+                fontsize=7,
+                color=color,
+                fontweight='bold',
+                va='center'
+            )
+
+        # ── Custom legend entries for signals ─────────────────────────────────
+        legend_elements = [
+            Line2D([0], [0], marker='^', color='w', markerfacecolor='#22c55e',
+                   markersize=9, label='BUY Signal',  markeredgecolor='white'),
+            Line2D([0], [0], marker='v', color='w', markerfacecolor='#ef4444',
+                   markersize=9, label='SELL Signal', markeredgecolor='white'),
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='#f59e0b',
+                   markersize=9, label='HOLD Signal', markeredgecolor='white'),
+        ]
+        existing_legend = ax.get_legend()
+        existing_handles, existing_labels = [], []
+        if existing_legend:
+            existing_handles = existing_legend.legend_handles
+            existing_labels  = [t.get_text() for t in existing_legend.get_texts()]
+
+        ax.legend(
+            handles=existing_handles + legend_elements,
+            labels=existing_labels + [e.get_label() for e in legend_elements],
+            loc='upper left', fontsize=8,
+            facecolor='#1a1d27', labelcolor='white', framealpha=0.8
+        )
+
+    plt.tight_layout()
     plt.show()
