@@ -3,17 +3,18 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
+import config
 
 
 def plot_candlestick_with_forecast(df, details, pred_LSTM, signals=None):
-    # ── Historical OHLC (last 100 days) ──────────────────────────────────────
+    # ── Historical OHLC (last N days from config) ─────────────────────────────
     df_ohlc = df[['Date', 'high', 'low', 'close']].copy()
     df_ohlc['Date'] = pd.to_datetime(df_ohlc['Date'], errors='coerce')
     for col in ['high', 'low', 'close']:
         df_ohlc[col] = pd.to_numeric(df_ohlc[col].astype(str).str.replace(',', '', regex=False), errors='coerce')
     df_ohlc = df_ohlc.dropna(subset=['Date', 'high', 'low', 'close'])
-    # Sort by Date column ascending BEFORE setting as index, then take last 100 rows
-    df_ohlc = df_ohlc.sort_values(by='Date', ascending=True).tail(100)
+    # Sort by Date column ascending BEFORE setting as index, then take last N rows
+    df_ohlc = df_ohlc.sort_values(by='Date', ascending=True).tail(config.PLOT_HISTORICAL_DAYS)
     # Synthesize 'Open' as previous day's close (mplfinance requires Open column)
     df_ohlc['open'] = df_ohlc['close'].shift(1)
     df_ohlc = df_ohlc.dropna(subset=['open'])
@@ -26,7 +27,7 @@ def plot_candlestick_with_forecast(df, details, pred_LSTM, signals=None):
     low_pred   = pred_LSTM[:, 1]   # index 1 = low
 
     last_date    = df_ohlc.index[-1]
-    future_dates = pd.bdate_range(start=last_date + pd.Timedelta(days=1), periods=5)
+    future_dates = pd.bdate_range(start=last_date + pd.Timedelta(days=1), periods=config.FORECAST_DAYS)
 
     # Use len(df_ohlc) for correct alignment
     nan_pad = [np.nan] * len(df_ohlc)
@@ -63,9 +64,11 @@ def plot_candlestick_with_forecast(df, details, pred_LSTM, signals=None):
 
     # ── Overlay BUY / SELL / HOLD signal markers ─────────────────────────────
     if signals:
-        COLORS  = {'BUY': '#22c55e', 'SELL': '#ef4444', 'HOLD': '#f59e0b'}
-        MARKERS = {'BUY': '^',       'SELL': 'v',        'HOLD': 'o'}
-        OFFSETS = {'BUY': -0.03,     'SELL':  0.03,      'HOLD': 0.0}
+        COLORS  = {k: v for k, v in config.SIGNAL_COLORS.items()}
+        COLORS_NAMED  = {'BUY': COLORS[2], 'SELL': COLORS[0], 'HOLD': COLORS[1]}
+        MARKERS = {k: v for k, v in config.SIGNAL_MARKERS.items()}
+        MARKERS_NAMED = {'BUY': MARKERS[2], 'SELL': MARKERS[0], 'HOLD': MARKERS[1]}
+        OFFSETS = config.SIGNAL_OFFSETS
 
         # x-axis positions: historical bars occupy 0 … len(df_ohlc)-1,
         # forecast bars start at len(df_ohlc)
@@ -75,8 +78,8 @@ def plot_candlestick_with_forecast(df, details, pred_LSTM, signals=None):
             x_pos  = base_x + i
             label  = sig['label']
             conf   = sig['confidence']
-            color  = COLORS[label]
-            marker = MARKERS[label]
+            color  = COLORS_NAMED[label]
+            marker = MARKERS_NAMED[label]
             # Place marker slightly above/below the forecast close price
             y_price = close_pred[i]
             y_offset = y_price * (1 + OFFSETS[label] * 2)

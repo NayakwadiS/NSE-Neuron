@@ -1,4 +1,4 @@
-from Algorithms import *
+from models import *
 import warnings
 warnings.filterwarnings('ignore', 'statsmodels.tsa.arima_model.ARMA',
                         FutureWarning)

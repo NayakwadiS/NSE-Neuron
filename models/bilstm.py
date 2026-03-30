@@ -1,10 +1,20 @@
-from Algorithms import *
+from models import *
+from config import (
+    FORECAST_DAYS,
+    FEATURE_COLUMNS,
+    TIME_STEP,
+    RNN_UNITS,
+    EARLY_STOPPING_MONITOR,
+    EARLY_STOPPING_PATIENCE,
+    EPOCHS,
+    BATCH_SIZE
+)
 
 
 def bilstm(df):
-    days = 5
+    days = FORECAST_DAYS
     # Select relevant columns and ensure numeric types (strip commas first)
-    feature_cols = ['close', 'high', 'low', 'prev_close']
+    feature_cols = FEATURE_COLUMNS
     df_features = df[feature_cols].copy()
     for col in feature_cols:
         df_features[col] = pd.to_numeric(
@@ -36,14 +46,14 @@ def bilstm(df):
             dataY.append(dataset[i + time_step, :])
         return np.array(dataX), np.array(dataY)
 
-    time_step = 10
+    time_step = TIME_STEP
     X_train, y_train = create_dataset(train_data, time_step)
     X_test, ytest = create_dataset(test_data, time_step)
 
     X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], X_train.shape[2])
     X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], X_test.shape[2])
 
-    units = 64
+    units = RNN_UNITS
 
     # Create the Bidirectional LSTM model
     # Bidirectional reads sequence in both forward and backward directions
@@ -55,15 +65,14 @@ def bilstm(df):
     model.add(Dense(df_model.shape[1]))
     model.compile(loss='mean_squared_error', optimizer='adam')
 
-    # EarlyStopping: stop when val_loss doesn't improve for 5 epochs, restore best weights
-    early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True, verbose=1)
+    # EarlyStopping: stop when val_loss doesn't improve for patience epochs, restore best weights
+    early_stop = EarlyStopping(monitor=EARLY_STOPPING_MONITOR,
+                               patience=EARLY_STOPPING_PATIENCE,
+                               restore_best_weights=True, verbose=1)
     model.fit(
-        X_train,
-        y_train,
+        X_train, y_train,
         validation_data=(X_test, ytest),
-        epochs=100,
-        batch_size=64,
-        verbose=1,
+        epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1,
         callbacks=[early_stop],
     )
 

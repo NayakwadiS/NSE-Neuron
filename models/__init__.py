@@ -27,10 +27,10 @@ import seaborn as sns
 import nselib
 from tabulate import tabulate
 from Dataset.getData import getDataFrame
-from Algorithms.lstm import lstm
-from Algorithms.bilstm import bilstm
-from Algorithms.gru import gru
-from Algorithms.cnn_lstm import cnn_lstm
-from Algorithms.arima import arima
-from Algorithms.arima import arima_new
-from Algorithms.lstm_classifier import lstm_classifier
+from models.lstm import lstm
+from models.bilstm import bilstm
+from models.gru import gru
+from models.cnn_lstm import cnn_lstm
+from models.arima import arima
+from models.arima import arima_new
+from models.lstm_classifier import lstm_classifier

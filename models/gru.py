@@ -1,10 +1,20 @@
-from Algorithms import *
+from models import *
+from config import (
+    FORECAST_DAYS,
+    FEATURE_COLUMNS,
+    TIME_STEP,
+    RNN_UNITS,
+    EARLY_STOPPING_MONITOR,
+    EARLY_STOPPING_PATIENCE,
+    EPOCHS,
+    BATCH_SIZE
+)
 
 
-def cnn_lstm(df):
-    days = 5
+def gru(df):
+    days = FORECAST_DAYS
     # Select relevant columns and ensure numeric types (strip commas first)
-    feature_cols = ['close', 'high', 'low', 'prev_close']
+    feature_cols = FEATURE_COLUMNS
     df_features = df[feature_cols].copy()
     for col in feature_cols:
         df_features[col] = pd.to_numeric(
@@ -28,18 +38,7 @@ def cnn_lstm(df):
     train_data = df_scaled[0:training_size, :]
     test_data  = df_scaled[training_size:len(df_scaled), :]
 
-    # CNN-LSTM uses a subsequence approach:
-    # the full time_step window is split into n_seq subsequences of sub_steps each.
-    # CNN extracts local features from each subsequence,
-    # then LSTM captures temporal dependencies across subsequences.
-    # e.g. time_step=20, n_seq=4, sub_steps=5
-    #   -> 4 windows of 5 days each -> CNN per window -> LSTM across 4 windows
-    n_seq     = 4   # number of subsequences (LSTM time steps)
-    sub_steps = 5   # timesteps per subsequence (CNN input length)
-    time_step = n_seq * sub_steps   # total lookback = 20
-
-    n_features = df_model.shape[1]
-
+    # Convert array of values into a dataset matrix for multivariate
     def create_dataset(dataset, time_step=1):
         dataX, dataY = [], []
         for i in range(len(dataset) - time_step - 1):
@@ -48,40 +47,32 @@ def cnn_lstm(df):
             dataY.append(dataset[i + time_step, :])
         return np.array(dataX), np.array(dataY)
 
+    time_step = TIME_STEP
     X_train, y_train = create_dataset(train_data, time_step)
     X_test,  ytest   = create_dataset(test_data,  time_step)
 
-    # Reshape to [samples, n_seq, sub_steps, n_features] for TimeDistributed CNN
-    X_train = X_train.reshape((X_train.shape[0], n_seq, sub_steps, n_features))
-    X_test  = X_test.reshape((X_test.shape[0],   n_seq, sub_steps, n_features))
+    X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], X_train.shape[2])
+    X_test  = X_test.reshape(X_test.shape[0],   X_test.shape[1],  X_test.shape[2])
 
-    # Build CNN-LSTM model
-    # CNN block (TimeDistributed): extracts local spatial/pattern features from each sub-sequence
-    # LSTM block: learns long-range temporal dependencies across the CNN feature maps
-    model = Sequential([
-        # CNN feature extractor applied independently to each of the n_seq sub-sequences
-        TimeDistributed(Conv1D(filters=64, kernel_size=3, activation='relu', padding='same'),
-                        input_shape=(n_seq, sub_steps, n_features)),
-        TimeDistributed(MaxPooling1D(pool_size=2, padding='same')),
-        TimeDistributed(Conv1D(filters=32, kernel_size=3, activation='relu', padding='same')),
-        TimeDistributed(Flatten()),
+    # 64 units — good balance of capacity vs training speed for financial time series
+    units = RNN_UNITS
 
-        # LSTM reads the sequence of CNN feature vectors across n_seq windows
-        KerasLSTM(64, return_sequences=True),
-        KerasLSTM(64),
-
-        # Output layer predicts all features at once
-        Dense(n_features),
-    ])
+    # Create the Stacked GRU model
+    model = Sequential()
+    model.add(GRU(units, return_sequences=True, input_shape=(time_step, df_model.shape[1])))
+    model.add(GRU(units, return_sequences=True))
+    model.add(GRU(units))
+    model.add(Dense(df_model.shape[1]))
     model.compile(loss='mean_squared_error', optimizer='adam')
-    model.summary()
 
-    # EarlyStopping: stop when val_loss doesn't improve for 5 epochs, restore best weights
-    early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True, verbose=1)
+    # EarlyStopping: stop when val_loss doesn't improve for patience epochs, restore best weights
+    early_stop = EarlyStopping(monitor=EARLY_STOPPING_MONITOR,
+                               patience=EARLY_STOPPING_PATIENCE,
+                               restore_best_weights=True, verbose=1)
     model.fit(
         X_train, y_train,
         validation_data=(X_test, ytest),
-        epochs=100, batch_size=64, verbose=1,
+        epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1,
         callbacks=[early_stop]
     )
 
@@ -95,15 +86,13 @@ def cnn_lstm(df):
         scaler.inverse_transform(y_train)[:, 0], train_predict[:, 0]
     ))
 
-    # Forecast future 5 days
-    # Keep a rolling buffer of (time_step) rows in scaled space
-    x_input = test_data[len(test_data) - time_step:].copy()   # shape: (time_step, n_features)
+    # Forecast future values
+    x_input = test_data[len(test_data) - time_step:].copy()
     lst_output = []
     last_known_close = df_features['close'].iloc[-1]
 
     for i in range(days):
-        # Reshape buffer -> [1, n_seq, sub_steps, n_features]
-        x_input_seq = x_input.reshape(1, n_seq, sub_steps, n_features)
+        x_input_seq = x_input.reshape(1, time_step, df_model.shape[1])
         yhat     = model.predict(x_input_seq, verbose=0)[0]
         yhat_inv = scaler.inverse_transform(yhat.reshape(1, -1))[0]
 
@@ -114,14 +103,14 @@ def cnn_lstm(df):
         pred_high        = pred_close + pred_high_spread
         pred_low         = pred_close - pred_low_spread
 
-        # Chain prev_close: Day 1 uses last known close, subsequent days use predicted close
+        # Chain prev_close correctly
         pred_prev_close = last_known_close if i == 0 else lst_output[i - 1][2]
 
-        # Output order: [high, low, close, prev_close] — matches table/plot expectations
+        # Output order: [high, low, close, prev_close] to match table/plot expectations
         result = np.array([pred_high, pred_low, pred_close, pred_prev_close])
         lst_output.append(result)
 
-        # Roll the input buffer forward by one step
+        # Prepare next scaled input row using spread representation
         next_row_raw    = np.array([[pred_close, pred_high_spread, pred_low_spread, pred_prev_close]])
         next_row_scaled = scaler.transform(next_row_raw)[0]
         x_input = np.vstack([x_input[1:], next_row_scaled])

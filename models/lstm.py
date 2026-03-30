@@ -1,10 +1,20 @@
-from Algorithms import *
+from models import *
+from config import (
+    FORECAST_DAYS,
+    FEATURE_COLUMNS,
+    TIME_STEP,
+    RNN_UNITS,
+    EARLY_STOPPING_MONITOR,
+    EARLY_STOPPING_PATIENCE,
+    EPOCHS,
+    BATCH_SIZE
+)
 
 
-def gru(df):
-    days = 5
+def lstm(df):
+    days = FORECAST_DAYS
     # Select relevant columns and ensure numeric types (strip commas first)
-    feature_cols = ['close', 'high', 'low', 'prev_close']
+    feature_cols = FEATURE_COLUMNS
     df_features = df[feature_cols].copy()
     for col in feature_cols:
         df_features[col] = pd.to_numeric(
@@ -14,6 +24,8 @@ def gru(df):
     df_features = df_features.dropna()
 
     # Compute spreads: model learns spread instead of absolute high/low
+    # high_spread = high - close  (always >= 0)
+    # low_spread  = close - low   (always >= 0)
     df_model = df_features.copy()
     df_model['high_spread'] = df_features['high'] - df_features['close']
     df_model['low_spread']  = df_features['close'] - df_features['low']
@@ -25,8 +37,7 @@ def gru(df):
 
     # Split dataset into train 80% and test 20%
     training_size = int(len(df_scaled) * 0.80)
-    train_data = df_scaled[0:training_size, :]
-    test_data  = df_scaled[training_size:len(df_scaled), :]
+    train_data, test_data = df_scaled[0:training_size, :], df_scaled[training_size:len(df_scaled), :]
 
     # Convert array of values into a dataset matrix for multivariate
     def create_dataset(dataset, time_step=1):
@@ -37,30 +48,35 @@ def gru(df):
             dataY.append(dataset[i + time_step, :])
         return np.array(dataX), np.array(dataY)
 
-    time_step = 10
+    time_step = TIME_STEP
     X_train, y_train = create_dataset(train_data, time_step)
     X_test,  ytest   = create_dataset(test_data,  time_step)
 
     X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], X_train.shape[2])
     X_test  = X_test.reshape(X_test.shape[0],   X_test.shape[1],  X_test.shape[2])
 
-    # 64 units — good balance of capacity vs training speed for financial time series
-    units = 64
+    # 64 units is the standard for financial time series LSTM
+    # - 32: too small, underfits price patterns
+    # - 64: good balance of capacity vs training speed
+    # - 128+: diminishing returns, slower, risk of overfitting on daily stock data
+    units = RNN_UNITS
 
-    # Create the Stacked GRU model
+    # Create the Stacked LSTM model
     model = Sequential()
-    model.add(GRU(units, return_sequences=True, input_shape=(time_step, df_model.shape[1])))
-    model.add(GRU(units, return_sequences=True))
-    model.add(GRU(units))
+    model.add(LSTM(units, return_sequences=True, input_shape=(time_step, df_model.shape[1])))
+    model.add(LSTM(units, return_sequences=True))
+    model.add(LSTM(units))
     model.add(Dense(df_model.shape[1]))
     model.compile(loss='mean_squared_error', optimizer='adam')
 
-    # EarlyStopping: stop when val_loss doesn't improve for 5 epochs, restore best weights
-    early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True, verbose=1)
+    # EarlyStopping: stop when val_loss doesn't improve for patience epochs, restore best weights
+    early_stop = EarlyStopping(monitor=EARLY_STOPPING_MONITOR,
+                               patience=EARLY_STOPPING_PATIENCE,
+                               restore_best_weights=True, verbose=1)
     model.fit(
         X_train, y_train,
         validation_data=(X_test, ytest),
-        epochs=100, batch_size=64, verbose=1,
+        epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1,
         callbacks=[early_stop]
     )
 
@@ -81,13 +97,13 @@ def gru(df):
 
     for i in range(days):
         x_input_seq = x_input.reshape(1, time_step, df_model.shape[1])
-        yhat     = model.predict(x_input_seq, verbose=0)[0]
+        yhat = model.predict(x_input_seq, verbose=0)[0]
         yhat_inv = scaler.inverse_transform(yhat.reshape(1, -1))[0]
 
         # yhat_inv: [close, high_spread, low_spread, prev_close]
         pred_close       = yhat_inv[0]
-        pred_high_spread = abs(yhat_inv[1])   # ensure spread is always positive
-        pred_low_spread  = abs(yhat_inv[2])   # ensure spread is always positive
+        pred_high_spread = abs(yhat_inv[1])  # ensure spread is always positive
+        pred_low_spread  = abs(yhat_inv[2])  # ensure spread is always positive
         pred_high        = pred_close + pred_high_spread
         pred_low         = pred_close - pred_low_spread
 
@@ -99,10 +115,15 @@ def gru(df):
         lst_output.append(result)
 
         # Prepare next scaled input row using spread representation
-        next_row_raw    = np.array([[pred_close, pred_high_spread, pred_low_spread, pred_prev_close]])
+        next_row_raw = np.array([[pred_close, pred_high_spread, pred_low_spread, pred_prev_close]])
         next_row_scaled = scaler.transform(next_row_raw)[0]
         x_input = np.vstack([x_input[1:], next_row_scaled])
 
     forecasted_stock_price = np.array(lst_output)
     return forecasted_stock_price, rmse
 
+
+
+#### Recommendation: For a robust project, start with LSTM as your baseline but look into CNN-LSTM hybrids
+# or Transformers if you have large datasets. Integrating Sentiment Analysis (from news or social media) often
+# significantly boosts the accuracy of these models
