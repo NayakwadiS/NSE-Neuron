@@ -27,9 +27,3 @@ import seaborn as sns
 import nselib
 from tabulate import tabulate
 from utils.data_fetcher import getDataFrame
-from models.lstm import lstm
-from models.bilstm import bilstm
-from models.gru import gru
-from models.cnn_lstm import cnn_lstm
-from models.lstm_classifier import lstm_classifier
-

@@ -1,4 +1,9 @@
 from models import *
+from models.bilstm import bilstm
+from models.cnn_lstm import cnn_lstm
+from models.gru import gru
+from models.lstm import lstm
+from models.lstm_classifier import lstm_classifier
 from visualization.ploting import plot_candlestick_with_forecast
 import config
 
