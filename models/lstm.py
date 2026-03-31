@@ -128,3 +128,4 @@ def lstm(df):
 #### Recommendation: For a robust project, start with LSTM as your baseline but look into CNN-LSTM hybrids
 # or Transformers if you have large datasets. Integrating Sentiment Analysis (from news or social media) often
 # significantly boosts the accuracy of these models
+

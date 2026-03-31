@@ -31,6 +31,5 @@ from models.lstm import lstm
 from models.bilstm import bilstm
 from models.gru import gru
 from models.cnn_lstm import cnn_lstm
-from models.arima import arima
-from models.arima import arima_new
 from models.lstm_classifier import lstm_classifier
+
