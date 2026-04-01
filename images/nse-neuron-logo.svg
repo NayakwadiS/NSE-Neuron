@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 180" width="680" height="180">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#020b18;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0a1628;stop-opacity:1" />
+    </linearGradient>
+
+    <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#00d4ff;stop-opacity:0.9" />
+      <stop offset="100%" style="stop-color:#0066cc;stop-opacity:0" />
+    </radialGradient>
+
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00d4ff" />
+      <stop offset="50%" style="stop-color:#ffffff" />
+      <stop offset="100%" style="stop-color:#00ff88" />
+    </linearGradient>
+
+    <radialGradient id="neuronNode" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#40eaff" />
+      <stop offset="100%" style="stop-color:#0088cc" />
+    </radialGradient>
+
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="strongGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="680" height="180" rx="20" fill="url(#bgGrad)"/>
+
+  <!-- Grid -->
+  <g opacity="0.04" stroke="#00d4ff" stroke-width="0.5">
+    <line x1="0" y1="45" x2="680" y2="45"/>
+    <line x1="0" y1="90" x2="680" y2="90"/>
+    <line x1="0" y1="135" x2="680" y2="135"/>
+    <line x1="155" y1="0" x2="155" y2="180"/>
+    <line x1="310" y1="0" x2="310" y2="180"/>
+    <line x1="465" y1="0" x2="465" y2="180"/>
+  </g>
+
+  <!-- ── ICON PANEL ── -->
+  <rect x="12" y="12" width="156" height="156" rx="16" fill="#040f1e" stroke="#0d2a4a" stroke-width="1"/>
+
+  <!-- Neuron glow -->
+  <circle cx="90" cy="90" r="60" fill="url(#nodeGlow)" opacity="0.12"/>
+
+  <!-- Neural connections -->
+  <g stroke="#00d4ff" stroke-width="0.9" opacity="0.3" fill="none">
+    <line x1="90" y1="90" x2="45" y2="52"/>
+    <line x1="90" y1="90" x2="135" y2="52"/>
+    <line x1="90" y1="90" x2="40" y2="100"/>
+    <line x1="90" y1="90" x2="140" y2="100"/>
+    <line x1="90" y1="90" x2="58" y2="135"/>
+    <line x1="90" y1="90" x2="122" y2="135"/>
+    <line x1="45" y1="52" x2="135" y2="52"/>
+    <line x1="40" y1="100" x2="58" y2="135"/>
+    <line x1="140" y1="100" x2="122" y2="135"/>
+    <line x1="45" y1="52" x2="40" y2="100"/>
+    <line x1="135" y1="52" x2="140" y2="100"/>
+  </g>
+
+  <!-- Candlesticks -->
+  <g filter="url(#glow)">
+    <line x1="108" y1="58" x2="108" y2="88" stroke="#ff4466" stroke-width="1.5"/>
+    <rect x="103" y="65" width="10" height="14" fill="#ff4466" rx="1.5"/>
+    <line x1="124" y1="55" x2="124" y2="84" stroke="#00ff88" stroke-width="1.5"/>
+    <rect x="119" y="62" width="10" height="13" fill="#00ff88" rx="1.5"/>
+    <line x1="140" y1="48" x2="140" y2="78" stroke="#00ff88" stroke-width="1.5"/>
+    <rect x="135" y="54" width="10" height="14" fill="#00ff88" rx="1.5"/>
+  </g>
+
+  <!-- Prediction arrow -->
+  <polyline points="140,54 149,44 157,36"
+    stroke="#00d4ff" stroke-width="1.8"
+    stroke-dasharray="3,2" fill="none"
+    filter="url(#glow)" opacity="0.95"/>
+
+  <!-- Outer nodes -->
+  <g filter="url(#strongGlow)">
+    <circle cx="45" cy="52" r="6" fill="url(#neuronNode)"/>
+    <circle cx="135" cy="52" r="6" fill="url(#neuronNode)"/>
+    <circle cx="40" cy="100" r="6" fill="url(#neuronNode)"/>
+    <circle cx="140" cy="100" r="6" fill="url(#neuronNode)"/>
+    <circle cx="58" cy="135" r="6" fill="url(#neuronNode)"/>
+    <circle cx="122" cy="135" r="6" fill="url(#neuronNode)"/>
+  </g>
+
+  <!-- Center node -->
+  <circle cx="90" cy="90" r="12" fill="#020b18" stroke="#00d4ff" stroke-width="2" filter="url(#strongGlow)"/>
+  <circle cx="90" cy="90" r="7" fill="url(#neuronNode)" filter="url(#strongGlow)"/>
+  <circle cx="90" cy="90" r="3" fill="#ffffff" opacity="0.95"/>
+
+  <!-- Buy dot -->
+  <circle cx="157" cy="36" r="5" fill="#00ff88" filter="url(#strongGlow)"/>
+  <circle cx="157" cy="36" r="2" fill="#ffffff"/>
+
+  <!-- ── TEXT PANEL ── -->
+
+  <!-- Main title -->
+  <text x="180" y="82"
+    font-family="'Courier New', Courier, monospace"
+    font-size="42"
+    font-weight="700"
+    letter-spacing="1.5"
+    fill="url(#textGrad)"
+    filter="url(#glow)">nse-neuron</text>
+
+  <!-- Divider -->
+  <line x1="180" y1="97" x2="668" y2="97" stroke="#0d3a5a" stroke-width="1"/>
+
+  <!-- Tagline -->
+  <text x="181" y="118"
+    font-family="'Courier New', Courier, monospace"
+    font-size="12.5"
+    letter-spacing="3"
+    fill="#4a9abb"
+    opacity="0.85">DEEP LEARNING · NSE STOCK PREDICTION</text>
+
+  <!-- Model chips -->
+  <g font-family="'Courier New', Courier, monospace" font-size="10.5" letter-spacing="1">
+    <rect x="180" y="132" width="46" height="18" rx="4" fill="#0a2a1a" stroke="#00ff88" stroke-width="0.9"/>
+    <text x="188" y="145" fill="#00ff88">LSTM</text>
+
+    <rect x="233" y="132" width="38" height="18" rx="4" fill="#0a2a1a" stroke="#00ff88" stroke-width="0.9"/>
+    <text x="241" y="145" fill="#00ff88">GRU</text>
+
+    <rect x="278" y="132" width="60" height="18" rx="4" fill="#0a1a2a" stroke="#00d4ff" stroke-width="0.9"/>
+    <text x="285" y="145" fill="#00d4ff">BiLSTM</text>
+
+    <rect x="345" y="132" width="80" height="18" rx="4" fill="#0a1a2a" stroke="#00d4ff" stroke-width="0.9"/>
+    <text x="352" y="145" fill="#00d4ff">CNN-LSTM</text>
+
+    <rect x="432" y="132" width="148" height="18" rx="4" fill="#1a0a2a" stroke="#aa66ff" stroke-width="0.9"/>
+    <text x="443" y="145" fill="#aa66ff">BUY · HOLD · SELL</text>
+  </g>
+
+  <!-- Border -->
+  <rect width="680" height="180" rx="20" fill="none" stroke="#0d3a5a" stroke-width="1.2"/>
+</svg>

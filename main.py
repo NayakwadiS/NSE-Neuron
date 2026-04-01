@@ -8,7 +8,7 @@ from visualization.ploting import plot_candlestick_with_forecast
 import config
 
 scheme_code = input('Enter the NSE Share Symbol:- ')
-choice = input("Select the algorithm for forecasting:\n1. LSTM\n2. BiLSTM\n3. GRU\n4. CNN-LSTM\nSelection: ")
+choice = input("Select the algorithm for forecasting:\n1. LSTM with Classifier\n2. BiLSTM\n3. GRU\n4. CNN-LSTM\nSelection: ")
 
 
 @getDataFrame(scheme_code)

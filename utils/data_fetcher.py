@@ -72,3 +72,25 @@ def getDataFrame(SYMBOL):
 
         return decorated
     return decorate
+
+# NSE Symbol
+#     │
+#     ▼
+# data_fetcher.py  ──► CSV Cache (/data/raw/)
+#     │
+#     ▼
+# preprocessor.py  ──► Clean, parse dates, numeric conversion
+#     │
+#     ▼
+# Model (LSTM / BiLSTM / GRU / CNN-LSTM)
+#     │  ├─ _prepare_data()   → spread features (high_spread, low_spread)
+#     │  ├─ _create_dataset() → sliding window sequences
+#     │  ├─ fit()             → train with early stopping
+#     │  ├─ evaluate()        → RMSE on training set
+#     │  └─ _forecast()       → iterative 5-day prediction
+#     │
+#     ▼
+# [LSTM only] lstm_classifier() → BUY / HOLD / SELL per day
+#     │
+#     ▼
+# plot_candlestick_with_forecast() + tabulate table
