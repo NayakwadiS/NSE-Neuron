@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Tuple
 import numpy as np
-import pandas as pd
+
 
 class BaseModel(ABC):
     @abstractmethod
