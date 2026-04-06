@@ -21,7 +21,7 @@ When **LSTM** is selected, an additional **LSTM Classifier** automatically runs 
 ## 🎬 Demo Video
 > Watch NSE-Neuron in action — walkthrough.
 
-<video src="images/VID_20260406_121713.mp4" controls width="800"></video>
+![demo](https://github.com/user-attachments/assets/885b1f40-3903-493a-b79f-577b64583c63)
 
 ---
 
