@@ -59,17 +59,17 @@ When **LSTM** is selected, an additional **LSTM Classifier** automatically runs 
 | 3 | **GRU** | `GRUModel` | Fast convergence; strong performer on **shorter history** datasets |
 | 4 | **CNN-LSTM** | `CNNLSTMModel` | Best accuracy on **large datasets**; CNN extracts local patterns, LSTM captures long-range trends |
 
-> ### 📊 How to pick the right model
->
-> The best model depends on **how much historical data is available** for the symbol.
-> Use **Run All (option 5)** to let the benchmark decide automatically.
->
-> | Available History | Recommended Model | Why |
-> |-------------------|-------------------|---|
-> | **< 5 years**     | BiLSTM             | Bidirectional context adds value with larger sequence windows|
-> | **5 – 15 years**  | GRU               | Lightweight design converges well on medium-sized sequences  |
-> | **15+ years**     | CNN-LSTM          | Enough data for CNN to extract meaningful local patterns before LSTM learns trends |
->
+### 📊 How to pick the right model
+
+The best model depends on **how much historical data is available** for the symbol.
+Use **Run All (option 5)** to let the benchmark decide automatically.
+
+| Available History | Recommended Model | Why |
+|-------------------|-------------------|---|
+| **< 5 years**     | BiLSTM             | Bidirectional context adds value with larger sequence windows|
+| **5 – 15 years**  | GRU               | Lightweight design converges well on medium-sized sequences  |
+| **15+ years**     | CNN-LSTM          | Enough data for CNN to extract meaningful local patterns before LSTM learns trends |
+
 > **Bottom line:** CNN-LSTM is the most powerful architecture, but it needs sufficient historical data (15+ years) to outperform simpler models. On smaller datasets, GRU or LSTM's lightweight design gives them the edge.
 
 ---
