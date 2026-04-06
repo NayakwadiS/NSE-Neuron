@@ -6,6 +6,8 @@
   ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
   ![TensorFlow](https://img.shields.io/badge/TensorFlow-2.5%2B-orange?logo=tensorflow)
   ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+  [![GitHub stars](https://img.shields.io/github/stars/NayakwadiS/NSE-Neuron?style=social)
+](https://github.com/NayakwadiS/NSE-Neuron/stargazers)
 </div>
 
 ---
@@ -19,10 +21,9 @@ When **LSTM** is selected, an additional **LSTM Classifier** automatically runs 
 ---
 
 ## 🎬 Demo Video
-> Watch NSE-Neuron in action — walkthrough.
+> Watch NSE-Neuron in action
 
-![demo](https://github.com/user-attachments/assets/97e91c26-3950-4df4-837b-f43ea22df5f9)
-
+![demo](images/demo.gif)
 
 ---
 
@@ -117,6 +118,7 @@ Select the algorithm for forecasting:
 2. BiLSTM
 3. GRU
 4. CNN-LSTM
+5. Run All (Benchmark & Rank)
 Selection: 1
 ```
 
