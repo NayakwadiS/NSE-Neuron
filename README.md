@@ -21,13 +21,7 @@ When **LSTM** is selected, an additional **LSTM Classifier** automatically runs 
 ## 🎬 Demo Video
 > Watch NSE-Neuron in action — walkthrough.
 
-<!-- ─────────────────────────────────────────────────────────────────────────
-  OPTION B — Direct .mp4 hosted on GitHub
-  1. Open any GitHub Issue in this repo → drag-and-drop your .mp4 file
-  2. Copy the URL GitHub generates (ends in .mp4)
-  3. Uncomment the line below and replace the URL
-──────────────────────────────────────────────────────────────────────────── -->
-<!-- <video src="https://user-images.githubusercontent.com/YOUR_USER_ID/YOUR_VIDEO.mp4" controls width="800"></video> -->
+<video src="images/VID_20260406_121713.mp4" controls width="800"></video>
 
 ---
 
