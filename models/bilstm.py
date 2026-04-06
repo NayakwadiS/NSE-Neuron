@@ -75,6 +75,7 @@ class BiLSTMModel(BaseModel):
             X, y,
             epochs=EPOCHS,
             batch_size=BATCH_SIZE,
+            validation_split=0.1,
             verbose=1,
             callbacks=[early_stop]
         )
@@ -90,10 +91,9 @@ class BiLSTMModel(BaseModel):
     # BaseModel: evaluate
     # ------------------------------------------------------------------
     def evaluate(self, X: np.ndarray, y: np.ndarray) -> float:
-        """Return RMSE for the close column on the given dataset."""
-        preds   = self.scaler.inverse_transform(self.predict(X))
-        actuals = self.scaler.inverse_transform(y)
-        return math.sqrt(mean_squared_error(actuals[:, 0], preds[:, 0]))
+        """Return RMSE for the close column on scaled values (fair cross-model comparison)."""
+        preds   = self.predict(X)
+        return math.sqrt(mean_squared_error(y[:, 0], preds[:, 0]))
 
     # ------------------------------------------------------------------
     # Main entry: train model + forecast future days
@@ -137,8 +137,10 @@ class BiLSTMModel(BaseModel):
         # Train (uses BaseModel.fit)
         self.fit(X_train, y_train)
 
-        # RMSE on training set (uses BaseModel.evaluate)
-        rmse = {'close': self.evaluate(X_train, y_train)}
+        # ── RMSE on full dataset for fair cross-model benchmarking ────────────
+        X_all, y_all = self._create_dataset(df_scaled, self.time_step)
+        X_all = X_all.reshape(X_all.shape[0], X_all.shape[1], self.n_features)
+        rmse = {'close': self.evaluate(X_all, y_all)}
 
         # Forecast FORECAST_DAYS into the future
         forecasted_stock_price = self._forecast(df_features)

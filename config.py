@@ -60,6 +60,12 @@ CNN_FILTERS_1 = 64      # first conv layer
 CNN_FILTERS_2 = 32      # second conv layer
 CNN_KERNEL_SIZE = 3     # kernel size for conv layers
 
+# CNN-LSTM specific training overrides
+# CNN-LSTM is a deeper model — needs smaller batch & more patience to converge properly
+CNN_BATCH_SIZE = 32              # smaller batch = more gradient updates per epoch
+CNN_EARLY_STOPPING_PATIENCE = 15 # more patience, CNN+LSTM needs longer to converge
+CNN_EPOCHS = 200                 # higher ceiling, early stopping will cut it short
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LSTM CLASSIFIER PARAMETERS (BUY/SELL/HOLD)
@@ -161,4 +167,3 @@ SIGNAL_OFFSETS = {
 
 # MinMaxScaler range
 SCALER_FEATURE_RANGE = (0, 1)
-

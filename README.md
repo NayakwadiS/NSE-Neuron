@@ -38,6 +38,7 @@ When **LSTM** is selected, an additional **LSTM Classifier** automatically runs 
 - 🤖 **BUY / HOLD / SELL signals** via LSTM Classifier (auto-runs with LSTM option)
 - 🗓️ **Future business dates** shown in forecast table (skips weekends automatically)
 - 🔌 **4 algorithm choices** — LSTM, BiLSTM, GRU, CNN-LSTM
+- 🏁 **Run All mode** — runs all 4 algorithms together, compares close price forecasts side-by-side and ranks them by RMSE benchmark
 
 ---
 
@@ -47,10 +48,21 @@ When **LSTM** is selected, an additional **LSTM Classifier** automatically runs 
 |---|-----------|-------|----------|
 | 1 | **LSTM** + Classifier | `LSTMModel` | Baseline; includes BUY/SELL/HOLD signals |
 | 2 | **Bidirectional LSTM** | `BiLSTMModel` | Captures both past & future context in window |
-| 3 | **GRU** | `GRUModel` | Faster training, similar accuracy to LSTM |
-| 4 | **CNN-LSTM** | `CNNLSTMModel` | Best accuracy; CNN extracts local patterns, LSTM captures trends |
+| 3 | **GRU** | `GRUModel` | Fast convergence; strong performer on **shorter history** datasets |
+| 4 | **CNN-LSTM** | `CNNLSTMModel` | Best accuracy on **large datasets**; CNN extracts local patterns, LSTM captures long-range trends |
 
-> **Accuracy ranking:** CNN-LSTM > BiLSTM > GRU > LSTM
+> ### 📊 How to pick the right model
+>
+> The best model depends on **how much historical data is available** for the symbol.
+> Use **Run All (option 5)** to let the benchmark decide automatically.
+>
+> | Available History | Recommended Model | Why |
+> |-------------------|-------------------|---|
+> | **< 5 years**     | BiLSTM             | Bidirectional context adds value with larger sequence windows|
+> | **5 – 15 years**  | GRU               | Lightweight design converges well on medium-sized sequences  |
+> | **15+ years**     | CNN-LSTM          | Enough data for CNN to extract meaningful local patterns before LSTM learns trends |
+>
+> **Bottom line:** CNN-LSTM is the most powerful architecture, but it needs sufficient historical data (15+ years) to outperform simpler models. On smaller datasets, GRU or LSTM's lightweight design gives them the edge.
 
 ---
 
