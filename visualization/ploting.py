@@ -5,6 +5,14 @@ from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 import config
 
+# Colours assigned to each algorithm for the "Run All" overlay plot
+ALGO_COLORS = {
+    'LSTM':     '#3b82f6',   # blue
+    'BiLSTM':   '#a855f7',   # purple
+    'GRU':      '#f97316',   # orange
+    'CNN-LSTM': '#22c55e',   # green
+}
+
 
 def plot_candlestick_with_forecast(df, details, pred_LSTM, signals=None):
     # ── Historical OHLC (last N days from config) ─────────────────────────────
@@ -120,6 +128,113 @@ def plot_candlestick_with_forecast(df, details, pred_LSTM, signals=None):
             loc='upper left', fontsize=8,
             facecolor='#1a1d27', labelcolor='white', framealpha=0.8
         )
+
+    plt.tight_layout()
+    plt.show()
+
+
+def _build_ohlc(df):
+    """Return a clean, date-indexed OHLC DataFrame ready for mplfinance."""
+    df_ohlc = df[['Date', 'high', 'low', 'close']].copy()
+    df_ohlc['Date'] = pd.to_datetime(df_ohlc['Date'], errors='coerce')
+    for col in ['high', 'low', 'close']:
+        df_ohlc[col] = pd.to_numeric(
+            df_ohlc[col].astype(str).str.replace(',', '', regex=False), errors='coerce'
+        )
+    df_ohlc = df_ohlc.dropna(subset=['Date', 'high', 'low', 'close'])
+    df_ohlc = df_ohlc.sort_values(by='Date', ascending=True).tail(config.PLOT_HISTORICAL_DAYS)
+    df_ohlc['open'] = df_ohlc['close'].shift(1)
+    df_ohlc = df_ohlc.dropna(subset=['open'])
+    df_ohlc = df_ohlc.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'})
+    df_ohlc = df_ohlc.set_index('Date')
+    df_ohlc.index = pd.DatetimeIndex(df_ohlc.index)
+    return df_ohlc
+
+
+def plot_all_algos_forecast(df, details, all_preds, algo_names):
+    """
+    Candlestick chart of the last N historical days with each algorithm's
+    predicted Close values overlaid as a separate coloured line.
+
+    Parameters
+    ----------
+    df         : raw DataFrame from data_fetcher
+    details    : dict with scheme_name / scheme_code
+    all_preds  : dict  {algo_name: np.ndarray shape (FORECAST_DAYS, n_features)}
+    algo_names : list of algorithm name strings (order preserved)
+    """
+    df_ohlc = _build_ohlc(df)
+
+    last_date    = df_ohlc.index[-1]
+    future_dates = pd.bdate_range(
+        start=last_date + pd.Timedelta(days=1), periods=config.FORECAST_DAYS
+    )
+
+    nan_pad = [np.nan] * len(df_ohlc)
+
+    # Extend df_ohlc with NaN forecast rows so the x-axis covers all dates
+    df_forecast = pd.DataFrame(
+        {'Open': np.nan, 'High': np.nan, 'Low': np.nan, 'Close': np.nan},
+        index=future_dates
+    )
+    df_full = pd.concat([df_ohlc, df_forecast])
+
+    # Build one addplot line per algorithm (close values only)
+    ap = []
+    for name in algo_names:
+        close_pred = all_preds[name][:, 2]          # index 2 = close
+        line_data  = nan_pad + list(close_pred)
+        ap.append(
+            mpf.make_addplot(
+                line_data,
+                type='line',
+                color=ALGO_COLORS.get(name, 'white'),
+                label=f'{name} Forecast',
+                panel=0,
+                width=2
+            )
+        )
+
+    fig, axes = mpf.plot(
+        df_full,
+        type='candle',
+        style='charles',
+        ylabel='Price in Rupees',
+        title=f"All Algorithms — Close Forecast for {details['scheme_name']}",
+        volume=False,
+        addplot=ap,
+        warn_too_much_data=200,
+        returnfig=True
+    )
+
+    ax = axes[0]
+
+    # ── Vertical divider between historical and forecast zones ────────────────
+    ax.axvline(
+        x=len(df_ohlc) - 0.5,
+        color='white',
+        linewidth=1,
+        linestyle='--',
+        alpha=0.5,
+        label='Forecast Start'
+    )
+
+    # ── Legend ────────────────────────────────────────────────────────────────
+    legend_elements = [
+        Line2D([0], [0], color=ALGO_COLORS.get(n, 'white'), linewidth=2, label=f'{n} Forecast')
+        for n in algo_names
+    ]
+    legend_elements.append(
+        Line2D([0], [0], color='white', linewidth=1, linestyle='--', label='Forecast Start')
+    )
+    ax.legend(
+        handles=legend_elements,
+        loc='upper left',
+        fontsize=8,
+        facecolor='#1a1d27',
+        labelcolor='white',
+        framealpha=0.8
+    )
 
     plt.tight_layout()
     plt.show()

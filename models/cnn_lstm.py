@@ -6,15 +6,15 @@ from config import (
     TRAIN_TEST_SPLIT,
     RNN_UNITS,
     EARLY_STOPPING_MONITOR,
-    EARLY_STOPPING_PATIENCE,
-    EPOCHS,
-    BATCH_SIZE,
     CNN_FILTERS_1,
     CNN_KERNEL_SIZE,
     CNN_FILTERS_2,
     CNN_N_SEQ,
     CNN_SUB_STEPS,
-    CNN_TIME_STEP
+    CNN_TIME_STEP,
+    CNN_BATCH_SIZE,
+    CNN_EARLY_STOPPING_PATIENCE,
+    CNN_EPOCHS
 )
 
 
@@ -74,14 +74,15 @@ class CNNLSTMModel(BaseModel):
         """Train the CNN-LSTM on pre-built (X_train, y_train) arrays."""
         early_stop = EarlyStopping(
             monitor=EARLY_STOPPING_MONITOR,
-            patience=EARLY_STOPPING_PATIENCE,
+            patience=CNN_EARLY_STOPPING_PATIENCE,
             restore_best_weights=True,
             verbose=1
         )
         self.model.fit(
             X, y,
-            epochs=EPOCHS,
-            batch_size=BATCH_SIZE,
+            epochs=CNN_EPOCHS,
+            batch_size=CNN_BATCH_SIZE,
+            validation_split=0.1,
             verbose=1,
             callbacks=[early_stop]
         )
@@ -97,10 +98,9 @@ class CNNLSTMModel(BaseModel):
     # BaseModel: evaluate
     # ------------------------------------------------------------------
     def evaluate(self, X: np.ndarray, y: np.ndarray) -> float:
-        """Return RMSE for the close column on the given dataset."""
-        preds   = self.scaler.inverse_transform(self.predict(X))
-        actuals = self.scaler.inverse_transform(y)
-        return math.sqrt(mean_squared_error(actuals[:, 0], preds[:, 0]))
+        """Return RMSE for the close column on scaled values (fair cross-model comparison)."""
+        preds   = self.predict(X)
+        return math.sqrt(mean_squared_error(y[:, 0], preds[:, 0]))
 
     # ------------------------------------------------------------------
     # Main entry: train model + forecast future days
@@ -152,8 +152,10 @@ class CNNLSTMModel(BaseModel):
         # Train (uses BaseModel.fit)
         self.fit(X_train, y_train)
 
-        # RMSE on training set (uses BaseModel.evaluate)
-        rmse = {'close': self.evaluate(X_train, y_train)}
+        # ── RMSE on full dataset for fair cross-model benchmarking ────────────
+        X_all, y_all = self._create_dataset(df_scaled, self.time_step)
+        X_all = X_all.reshape((X_all.shape[0], self.n_seq, self.sub_steps, self.n_features))
+        rmse = {'close': self.evaluate(X_all, y_all)}
 
         # Forecast FORECAST_DAYS into the future
         forecasted_stock_price = self._forecast(df_features)
