@@ -167,3 +167,35 @@ SIGNAL_OFFSETS = {
 
 # MinMaxScaler range
 SCALER_FEATURE_RANGE = (0, 1)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# REGIME DETECTION PARAMETERS (Rule-Based, No ML)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Minimum number of rows required to run regime detection safely.
+# If the dataset has fewer rows than this, system falls back to standard prediction.
+MIN_REGIME_ROWS = 1000
+
+# Simple Moving Average periods for trend detection
+# Regime uses classic "golden cross / death cross" logic:
+#   close > SMA_SLOW  AND  SMA_FAST > SMA_SLOW  →  BULL
+#   close < SMA_SLOW  AND  SMA_FAST < SMA_SLOW  →  BEAR
+#   otherwise                                    →  SIDEWAYS
+REGIME_SMA_FAST = 50
+REGIME_SMA_SLOW = 200
+
+# Tolerance band around SMA_SLOW for SIDEWAYS classification
+# If |close - SMA_SLOW| / SMA_SLOW < tolerance  →  SIDEWAYS
+REGIME_SIDEWAYS_TOLERANCE = 0.03   # 3%
+
+# Confidence boost/penalty applied to BUY/SELL/HOLD signals when
+# the regime agrees or conflicts with the classifier output (percentage points)
+REGIME_CONFIDENCE_BOOST   =  8.0   # added when regime confirms signal
+REGIME_CONFIDENCE_PENALTY =  6.0   # subtracted when regime conflicts signal
+
+# Recommended model per regime (used in Regime-Aware mode, case 6)
+REGIME_MODEL_MAP = {
+    'BULL':     'CNN-LSTM',   # strong uptrend + typically lots of data → CNN-LSTM
+    'BEAR':     'BiLSTM',     # downtrend → BiLSTM (captures both directions)
+    'SIDEWAYS': 'GRU',        # ranging market → GRU
+}
