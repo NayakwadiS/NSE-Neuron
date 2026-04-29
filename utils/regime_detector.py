@@ -165,10 +165,12 @@ def apply_regime_confidence(signals: list, regime: dict) -> list:
 
         # SIDEWAYS / UNKNOWN — no change
 
+        delta = confidence - raw_conf
         adjusted.append({
             **sig,
             'confidence':       round(confidence, 1),
-            'raw_confidence':   round(raw_conf, 1),
+            'confidence_orig':  round(raw_conf, 1),
+            'confidence_delta': f"{'+' if delta >= 0 else ''}{round(delta, 1)}",
             'regime_adjusted':  boosted or penalised,
             'regime_direction': '↑ boosted' if boosted else ('↓ penalised' if penalised else '—'),
         })

@@ -32,6 +32,9 @@ def forecasting_nse_stocks(df, details, choice):
             pred, rmse = lstm(df)
             print("\nRunning LSTM Classifier...")
             signals = lstm_classifier(df, pred)
+            regime  = detect_regime(df)
+            if regime['sufficient_data'] and signals:
+                signals = apply_regime_confidence(signals, regime)
         case '2': pred, rmse = bilstm(df)
         case '3': pred, rmse = gru(df)
         case '4': pred, rmse = cnn_lstm(df)
@@ -163,8 +166,15 @@ def forecasting_nse_stocks(df, details, choice):
                 row = [future_dates[i].strftime('%d-%b-%Y')] + list(pred[i])
                 if signals:
                     sig = signals[i]
-                    adj = f" {sig.get('regime_direction', '')}" if sig.get('regime_adjusted') else ''
-                    row.append(f"{sig['label']} ({sig['confidence']}%{adj})")
+                    # Show regime adjustment if present
+                    if sig.get('regime_adjusted') and sig.get('regime_direction'):
+                        # If adjustment amount is available, show it
+                        if 'confidence_delta' in sig and 'confidence_orig' in sig:
+                            row.append(f"{sig['label']} ({sig['confidence_orig']}% {sig['confidence_delta']}% = {sig['confidence']}% {sig['regime_direction']})")
+                        else:
+                            row.append(f"{sig['label']} ({sig['confidence']}% {sig['regime_direction']})")
+                    else:
+                        row.append(f"{sig['label']} ({sig['confidence']}%)")
                 data.append(row)
 
             min_vals = ['Min'] + list(np.min(pred, axis=0))
@@ -197,7 +207,14 @@ def forecasting_nse_stocks(df, details, choice):
     for i in range(config.FORECAST_DAYS):
         row = [future_dates[i].strftime('%d-%b-%Y')] + list(pred[i])
         if signals:
-            row.append(f"{signals[i]['label']} ({signals[i]['confidence']}%)")
+            sig = signals[i]
+            if sig.get('regime_adjusted') and sig.get('regime_direction') and sig['regime_direction'] != '—':
+                if 'confidence_delta' in sig and 'confidence_orig' in sig:
+                    row.append(f"{sig['label']} ({sig['confidence_orig']}% {sig['confidence_delta']}% = {sig['confidence']}% {sig['regime_direction']})")
+                else:
+                    row.append(f"{sig['label']} ({sig['confidence']}% {sig['regime_direction']})")
+            else:
+                row.append(f"{sig['label']} ({sig['confidence']}%)")
         data.append(row)
     # Calculate min/max for each column
     min_vals = ['Min'] + list(np.min(pred, axis=0))
