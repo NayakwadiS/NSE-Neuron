@@ -75,6 +75,38 @@ Use **Run All (option 5)** to let the benchmark decide automatically.
 
 ---
 
+## 📡 Regime Detection
+
+Option **6 — Regime Analysis** detects the current market condition before you pick a model, so your choice is informed rather than guesswork.
+
+### How it works
+
+The detector uses a classic **SMA crossover** rule on the full historical close price:
+
+| Condition | Regime | Recommended Model |
+|-----------|--------|-------------------|
+| SMA50 > SMA200 and Close > SMA200 | 🟢 **BULL** | CNN-LSTM |
+| SMA50 < SMA200 and Close < SMA200 | 🔴 **BEAR** | BiLSTM |
+| `\|Close − SMA200\| / SMA200 < 3%` or ambiguous cross | 🟡 **SIDEWAYS** | GRU |
+
+> Minimum **1000 rows** of history required. If data is insufficient the system falls back to standard prediction without crashing.
+
+### Signal confidence adjustment
+
+When **Regime Analysis (option 6)** is selected and then **LSTM with Classifier (option 1)** is chosen as the algorithm, the BUY/SELL/HOLD confidence from the classifier is automatically adjusted based on whether the signal agrees with the detected regime:
+
+- **Regime confirms signal** → confidence boosted by `+8%`  *(e.g. BEAR regime + SELL signal)*
+- **Regime conflicts signal** → confidence penalised by `−6%`  *(e.g. BEAR regime + BUY signal)*
+- **SIDEWAYS** → no adjustment
+
+> For options 2–4 (BiLSTM, GRU, CNN-LSTM) inside regime mode, the classifier does not run — only the forecast table and regime summary are shown.
+
+### Screenshot
+
+<img src="images/regime_detection.jpg" alt="Regime Detection" width="800" height="250"/>
+
+---
+
 ## 🚀 Getting Started
 
 ### 1. Clone the repository
@@ -118,7 +150,8 @@ Select the algorithm for forecasting:
 2. BiLSTM
 3. GRU
 4. CNN-LSTM
-5. Run All (Benchmark & Rank)
+5. Run All
+6. Regime Analysis (detect market regime, then choose model)
 Selection: 1
 ```
 
