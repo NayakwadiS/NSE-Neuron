@@ -2,7 +2,6 @@
 Configuration file for NSE-Neuron project
 Contains all hyperparameters, thresholds, and settings used across models
 """
-
 # ══════════════════════════════════════════════════════════════════════════════
 # FORECASTING PARAMETERS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -199,3 +198,5 @@ REGIME_MODEL_MAP = {
     'BEAR':     'BiLSTM',     # downtrend → BiLSTM (captures both directions)
     'SIDEWAYS': 'GRU',        # ranging market → GRU
 }
+
+CLASSIFIER_LIST = {'1': "lstm_classifier", '2': "bilstm_classifier", '3': "gru_classifier", '4': "cnn_lstm_classifier"}

@@ -3,7 +3,10 @@ from models.bilstm import bilstm
 from models.cnn_lstm import cnn_lstm
 from models.gru import gru
 from models.lstm import lstm
-from models.lstm_classifier import lstm_classifier
+from models.classifiers.lstm import lstm_classifier
+from models.classifiers.bilstm import bilstm_classifier
+from models.classifiers.gru import gru_classifier
+from models.classifiers.cnn_lstm import cnn_lstm_classifier
 from visualization.ploting import plot_candlestick_with_forecast, plot_all_algos_forecast
 from utils.regime_detector import detect_regime, apply_regime_confidence, regime_summary_line
 import config
@@ -11,11 +14,11 @@ import config
 scheme_code = input('Enter the NSE Share Symbol:- ')
 choice = input(
     "Select the algorithm for forecasting:\n"
-    "1. LSTM with Classifier\n"
+    "1. LSTM\n"
     "2. BiLSTM\n"
     "3. GRU\n"
     "4. CNN-LSTM\n"
-    "5. Run All\n"
+    "5. Run All without Classifiers\n"
     "6. Regime Analysis (detect market regime, then choose model)\n"
     "Selection: "
 )
@@ -35,9 +38,27 @@ def forecasting_nse_stocks(df, details, choice):
             regime  = detect_regime(df)
             if regime['sufficient_data'] and signals:
                 signals = apply_regime_confidence(signals, regime)
-        case '2': pred, rmse = bilstm(df)
-        case '3': pred, rmse = gru(df)
-        case '4': pred, rmse = cnn_lstm(df)
+        case '2':
+            pred, rmse = bilstm(df)
+            print("\nRunning BiLSTM Classifier...")
+            signals = bilstm_classifier(df, pred)
+            regime  = detect_regime(df)
+            if regime['sufficient_data'] and signals:
+                signals = apply_regime_confidence(signals, regime)
+        case '3':
+            pred, rmse = gru(df)
+            print("\nRunning GRU Classifier...")
+            signals = gru_classifier(df, pred)
+            regime  = detect_regime(df)
+            if regime['sufficient_data'] and signals:
+                signals = apply_regime_confidence(signals, regime)
+        case '4':
+            pred, rmse = cnn_lstm(df)
+            print("\nRunning CNN-LSTM Classifier...")
+            signals = cnn_lstm_classifier(df, pred)
+            regime  = detect_regime(df)
+            if regime['sufficient_data'] and signals:
+                signals = apply_regime_confidence(signals, regime)
         case '5':
             ALGO_NAMES = ['LSTM', 'BiLSTM', 'GRU', 'CNN-LSTM']
             algo_funcs = [lstm, bilstm, gru, cnn_lstm]
@@ -151,9 +172,10 @@ def forecasting_nse_stocks(df, details, choice):
 
             # Run classifier only when LSTM is selected — mirrors case '1' behaviour
             signals = None
-            if model_choice == '1':
-                print("\nRunning LSTM Classifier...")
-                signals = lstm_classifier(df, pred)
+            if model_choice in ['1', '2', '3', '4']:
+                print("\nRunning Classifier...")
+                classifier = config.CLASSIFIER_LIST.get(model_choice)
+                signals = globals()[classifier](df, pred)
                 if regime['sufficient_data'] and signals:
                     signals = apply_regime_confidence(signals, regime)
 
