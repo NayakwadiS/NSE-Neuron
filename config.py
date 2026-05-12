@@ -200,3 +200,5 @@ REGIME_MODEL_MAP = {
 }
 
 CLASSIFIER_LIST = {'1': "lstm_classifier", '2': "bilstm_classifier", '3': "gru_classifier", '4': "cnn_lstm_classifier"}
+HISTORIC_DATA = None
+PATTERN_COLS = ['HAMMER', 'ENGULFING', 'DOJI', 'SHOOTING_STAR', 'MORNING_STAR']

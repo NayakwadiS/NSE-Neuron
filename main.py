@@ -7,6 +7,7 @@ from models.classifiers.lstm import lstm_classifier
 from models.classifiers.bilstm import bilstm_classifier
 from models.classifiers.gru import gru_classifier
 from models.classifiers.cnn_lstm import cnn_lstm_classifier
+from utils.pattern_detector import detect_patterns, combine_regime_patterns
 from visualization.ploting import plot_candlestick_with_forecast, plot_all_algos_forecast
 from utils.regime_detector import detect_regime, apply_regime_confidence, regime_summary_line
 import config
@@ -19,7 +20,7 @@ choice = input(
     "3. GRU\n"
     "4. CNN-LSTM\n"
     "5. Run All without Classifiers\n"
-    "6. Regime Analysis (detect market regime, then choose model)\n"
+    "6. Regime & Pattern Analysis\n"
     "Selection: "
 )
 
@@ -96,7 +97,6 @@ def forecasting_nse_stocks(df, details, choice):
 
         case '6':
             regime = detect_regime(df)
-
             print(f"\n{'─'*60}")
             print(f"  Regime Analysis — {details['scheme_name']} ({details['scheme_code']})")
             print(f"{'─'*60}")
@@ -109,6 +109,20 @@ def forecasting_nse_stocks(df, details, choice):
             else:
                 print(f"  {regime['description']}")
             print(f"{'─'*60}\n")
+
+            print(f"  Pattern Analysis")
+            pattern_df, active_pats = detect_patterns(config.HISTORIC_DATA)
+            print(f"{'─' * 60}")
+            if active_pats:
+                for pat, val, date_str in active_pats:
+                    dir_arrow = '🔼 Bullish' if val > 0 else '🔽 Bearish'
+                    print(f"{pat.replace('_', ' '):<20} {dir_arrow}  (detected {date_str})")
+            else:
+                print(f"No significant patterns detected")
+            print(f"{'─' * 60}")
+            # ── Combined Regime + Pattern interpretation ──────────────────
+            combine_regime_patterns(regime, active_pats)
+            print(f"\n{'─' * 60}\n")
 
             # Step 3: ask user to pick model (1–5 only, no recursive 6)
             model_choice = input(
