@@ -113,7 +113,7 @@ def forecasting_nse_stocks(df, details, choice):
             # Step 3: ask user to pick model (1–5 only, no recursive 6)
             model_choice = input(
                 "  Select algorithm to run:\n"
-                "  1. LSTM with Classifier\n"
+                "  1. LSTM\n"
                 "  2. BiLSTM\n"
                 "  3. GRU\n"
                 "  4. CNN-LSTM\n"
