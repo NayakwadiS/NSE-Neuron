@@ -1,8 +1,8 @@
 import pandas as pd
-
+import config
 
 # Price columns that need numeric conversion
-PRICE_COLUMNS = ['close', 'prev_close', 'high', 'low']
+PRICE_COLUMNS = ['open','close', 'prev_close', 'high', 'low']
 
 
 def rename_columns(df):
@@ -12,14 +12,15 @@ def rename_columns(df):
             'ClosePrice': 'close',
             'PrevClose':  'prev_close',
             'HighPrice':  'high',
-            'LowPrice':   'low'
+            'LowPrice':   'low',
+            'OpenPrice':  'open'
         }
     )
 
 
 def select_columns(df):
     """Keep only required OHLC columns from raw NSE DataFrame."""
-    return df[['Date', 'ClosePrice', 'PrevClose', 'HighPrice', 'LowPrice']]
+    return df[['Date', 'ClosePrice', 'PrevClose', 'HighPrice', 'LowPrice', 'OpenPrice']]
 
 
 def convert_price_columns(df):
@@ -42,6 +43,13 @@ def parse_and_sort_dates(df):
     return df
 
 
+def removed_open_coulmn(df):
+    """Remove 'open' column from DataFrame if it exists."""
+    if 'open' in df.columns:
+        df = df.drop(columns=['open'])
+    return df
+
+
 def preprocess_nse_df(df):
     """
     Full preprocessing pipeline for NSE equity price data.
@@ -55,5 +63,9 @@ def preprocess_nse_df(df):
     df = rename_columns(df)
     df = convert_price_columns(df)
     df = parse_and_sort_dates(df)
+    # Save AFTER renaming/parsing but BEFORE removing 'open'
+    # so pattern_detector gets correct column names including 'open'
+    config.HISTORIC_DATA = df.copy()
+    df = removed_open_coulmn(df)
     print(df.head())
     return df

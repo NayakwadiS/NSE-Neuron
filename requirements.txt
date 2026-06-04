@@ -8,3 +8,4 @@ tensorflow>=2.5.1
 seaborn
 nselib
 mplfinance
+TA-Lib
