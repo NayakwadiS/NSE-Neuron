@@ -59,7 +59,6 @@ cd src/frontend && npm install && cd ../..
 ```
 
 ### Launch Web UI
-```
 ```bat
 start.bat          # Command Prompt
 ```
