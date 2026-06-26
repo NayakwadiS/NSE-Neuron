@@ -24,9 +24,27 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
 
   useEffect(() => {
     if (!containerRef.current) return
+    const container = containerRef.current
+
+    // Destroy any previous chart instance before creating a new one
+    if (chartRef.current) {
+      chartRef.current.remove()
+      chartRef.current = null
+    }
+
+    let rafId: number
+    let ro: ResizeObserver
+
+    const initChart = () => {
+      // If the container still has no width (e.g. tab hidden), retry next frame
+      const containerWidth = container.clientWidth
+      if (containerWidth === 0) {
+        rafId = requestAnimationFrame(initChart)
+        return
+      }
 
     // ── Create chart ───────────────────────────────────────────────────────
-    const chart = createChart(containerRef.current, {
+    const chart = createChart(container, {
       layout: {
         background:  { type: ColorType.Solid, color: '#0f172a' },
         textColor:   '#94a3b8',
@@ -42,7 +60,7 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
         timeVisible:     true,
         secondsVisible:  false,
       },
-      width:  containerRef.current.clientWidth,
+      width:  containerWidth,
       height: 420,
     })
     chartRef.current = chart
@@ -56,13 +74,15 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
       wickDownColor: '#ef4444',
     })
 
+    // Use close as fallback for open so candlesticks always render,
+    // even when the API omits the open column for some symbols.
     const candleData: CandlestickData[] = historical
-      .filter(d => d.open != null)
+      .filter(d => d.close != null && d.date)
       .map(d => ({
         time:  d.date as Time,
-        open:  d.open!,
-        high:  d.high,
-        low:   d.low,
+        open:  d.open  ?? d.close,   // fallback: doji-style candle
+        high:  d.high  ?? d.close,
+        low:   d.low   ?? d.close,
         close: d.close,
       }))
     candleSeries.setData(candleData)
@@ -115,19 +135,25 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
     }
 
     // ── Resize observer ────────────────────────────────────────────────────
-    const ro = new ResizeObserver(entries => {
+    ro = new ResizeObserver(entries => {
       for (const entry of entries) {
         chart.applyOptions({ width: entry.contentRect.width })
       }
     })
-    ro.observe(containerRef.current)
+    ro.observe(container)
 
     chart.timeScale().fitContent()
+    } // end initChart
+
+    rafId = requestAnimationFrame(initChart)
 
     return () => {
-      ro.disconnect()
-      chart.remove()
-      chartRef.current = null
+      cancelAnimationFrame(rafId)
+      if (ro) ro.disconnect()
+      if (chartRef.current) {
+        chartRef.current.remove()
+        chartRef.current = null
+      }
     }
   }, [historical, forecast, algoLabel])
 
@@ -135,18 +161,20 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
     <div className="rounded-xl border border-slate-700 bg-slate-900/80 overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-700 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white">
-          Candlestick + Forecast
+          {forecast.length > 0 ? 'Candlestick + Forecast' : 'Historical Candlestick'}
         </h3>
         <div className="flex items-center gap-4 text-xs text-slate-500">
           <span className="flex items-center gap-1.5">
             <span className="w-6 h-0.5 bg-emerald-500 inline-block" /> Historical
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-6 h-0.5 bg-indigo-400 inline-block border-dashed border" /> {algoLabel}
-          </span>
+          {forecast.length > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span className="w-6 h-0.5 bg-indigo-400 inline-block border-dashed border" /> {algoLabel}
+            </span>
+          )}
         </div>
       </div>
-      <div ref={containerRef} className="w-full" />
+      <div ref={containerRef} className="w-full" style={{ minHeight: 420 }} />
     </div>
   )
 }

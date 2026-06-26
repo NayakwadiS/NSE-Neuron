@@ -80,12 +80,23 @@ def _historical_ohlc(n: int = 120) -> list:
     hist_df = config.HISTORIC_DATA
     if hist_df is None:
         return []
-    cols = [c for c in ["date", "open", "high", "low", "close"] if c in hist_df.columns]
+    # Mandatory columns — rows without these are useless for the chart
+    mandatory = [c for c in ["date", "high", "low", "close"] if c in hist_df.columns]
+    # Optional: include open only when the column exists
+    optional  = [c for c in ["open"] if c in hist_df.columns]
+    cols = mandatory + optional
+
     tail = hist_df[cols].tail(n).copy()
-    tail = tail.dropna()
+    # Only drop rows where the mandatory columns are missing
+    tail = tail.dropna(subset=mandatory)
+
     records = []
     for _, row in tail.iterrows():
-        rec = {k: float(row[k]) if k != "date" else str(row[k]) for k in cols}
+        rec: dict = {}
+        for k in mandatory:
+            rec[k] = str(row[k]) if k == "date" else (float(row[k]) if pd.notna(row[k]) else None)
+        for k in optional:
+            rec[k] = float(row[k]) if pd.notna(row[k]) else None   # None → omitted on JS side
         records.append(rec)
     return records
 

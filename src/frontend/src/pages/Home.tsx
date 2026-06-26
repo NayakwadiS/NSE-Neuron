@@ -54,6 +54,7 @@ export default function Home() {
     if (!symbol.trim()) { toast.error('Please select a symbol first'); return }
     setRegimeLoading(true)
     setRegimeResult(null)
+    setJobId(null)          // clear any previous forecast so charts don't conflict
     try {
       const res = await fetchRegimeAnalysis(symbol)
       setRegimeResult(res)
@@ -217,8 +218,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── Regime tab (from forecast result) ─────────────────────────── */}
-        {isDone && result && tab === 'regime' && result.regime && (
+        {/* ── Regime tab (from forecast result — only when no standalone regime) */}
+        {isDone && result && tab === 'regime' && result.regime && !regimeResult && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <RegimeCard regime={result.regime} />
           </div>
