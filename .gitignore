@@ -206,3 +206,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ── NSE-Neuron model weight cache ────────────────────────────────────────────
+# Trained Keras weights + scalers are large binary artifacts regenerated on
+# demand; never commit them.
+saved_models/
+!saved_models/.gitkeep
+*.keras
+*.h5
+*.pkl
+

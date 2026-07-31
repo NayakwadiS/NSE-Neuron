@@ -43,6 +43,34 @@ export interface OHLCPoint {
   close: number
 }
 
+// ── Model weight cache ────────────────────────────────────────────────────────
+
+export type CacheStatus = 'miss' | 'warm' | 'fresh'
+
+export interface CacheInfo {
+  trained_at?: string
+  n_rows?:     number
+}
+
+export interface CachedModel {
+  symbol:     string
+  model:      string
+  trained_at: string
+  n_rows:     number
+  last_date:  string
+  metrics:    Record<string, number>
+  size_kb:    number
+}
+
+export interface CacheListResponse {
+  enabled:         boolean
+  max_stale_days:  number
+  max_age_days:    number
+  count:           number
+  total_size_kb:   number
+  models:          CachedModel[]
+}
+
 // ── Forecast result shapes ────────────────────────────────────────────────────
 
 export interface SingleForecastResult {
@@ -54,6 +82,9 @@ export interface SingleForecastResult {
   rmse:         number
   regime:       RegimeInfo
   historical:   OHLCPoint[]
+  cache_status?: CacheStatus
+  cache_label?:  string
+  cache_info?:   CacheInfo
 }
 
 export interface AllForecastResult {
@@ -66,6 +97,9 @@ export interface AllForecastResult {
   best_algo:      string
   regime:         RegimeInfo
   historical:     OHLCPoint[]
+  cache_status?:   CacheStatus
+  cache_label?:    string
+  cache_per_algo?: Record<string, CacheStatus>
 }
 
 export type ForecastResult = SingleForecastResult | AllForecastResult
@@ -99,4 +133,3 @@ export interface SymbolResult {
   symbol: string
   name:   string
 }
-

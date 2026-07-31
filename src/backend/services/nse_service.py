@@ -18,6 +18,7 @@ from utils.data_fetcher import _load_or_fetch
 from utils.preprocessor  import preprocess_nse_df
 from utils.regime_detector import detect_regime, apply_regime_confidence
 from utils.pattern_detector import detect_patterns, combine_regime_patterns
+from utils import model_registry
 
 from models.lstm      import lstm
 from models.bilstm    import bilstm
@@ -49,6 +50,27 @@ ALGO_DISPLAY = {
     "lstm": "LSTM", "bilstm": "BiLSTM",
     "gru": "GRU",   "cnn_lstm": "CNN-LSTM",
 }
+
+# Registry model names used by the weight cache (must match models/*.py)
+REGISTRY_NAMES = {
+    "lstm": "LSTM", "bilstm": "BiLSTM",
+    "gru": "GRU",   "cnn_lstm": "CNN-LSTM",
+}
+
+CACHE_STATUS_LABEL = {
+    "fresh": "Loaded cached model — no training needed",
+    "warm":  "Cached model fine-tuned on the newest bars",
+    "miss":  "Trained from scratch",
+}
+
+
+def _cache_info(algorithm: str, symbol: str) -> dict:
+    """Read back what the registry knows about the model we just used."""
+    name = REGISTRY_NAMES.get(algorithm, algorithm)
+    for entry in model_registry.list_cached():
+        if entry["symbol"] == symbol.upper() and entry["model"] == name:
+            return {"trained_at": entry.get("trained_at"), "n_rows": entry.get("n_rows")}
+    return {}
 
 
 def fetch_data(symbol: str):
@@ -146,7 +168,7 @@ def _regime_to_dict(regime: dict) -> dict:
 
 # ── Public service functions ──────────────────────────────────────────────────
 
-def run_single_forecast(job, symbol: str, algorithm: str) -> dict:
+def run_single_forecast(job, symbol: str, algorithm: str, force_retrain: bool = False) -> dict:
     """Train one model, run classifier, apply regime → return result dict."""
     job.progress = f"Fetching data for {symbol}…"
     df, details  = fetch_data(symbol)
@@ -154,12 +176,20 @@ def run_single_forecast(job, symbol: str, algorithm: str) -> dict:
     if algorithm not in ALGO_FUNCS:
         raise ValueError(f"Unknown algorithm: {algorithm}")
 
-    job.progress = f"Training {ALGO_DISPLAY[algorithm]} model…"
-    pred, rmse   = ALGO_FUNCS[algorithm](df)
+    job.progress = (
+        f"Retraining {ALGO_DISPLAY[algorithm]} model…" if force_retrain
+        else f"Loading / training {ALGO_DISPLAY[algorithm]} model…"
+    )
+    pred, rmse, model_obj = ALGO_FUNCS[algorithm](
+        df, symbol=symbol, force_retrain=force_retrain, return_model=True
+    )
     rmse_val     = rmse["close"] if isinstance(rmse, dict) else float(rmse)
+    cache_status = getattr(model_obj, "cache_status", "miss")
 
     job.progress = f"Running {ALGO_DISPLAY[algorithm]} classifier…"
-    signals      = CLASSIFIER_FUNCS[algorithm](df, pred)
+    signals      = CLASSIFIER_FUNCS[algorithm](
+        df, pred, symbol=symbol, force_retrain=force_retrain
+    )
 
     job.progress = "Detecting market regime…"
     regime       = detect_regime(df)
@@ -175,10 +205,13 @@ def run_single_forecast(job, symbol: str, algorithm: str) -> dict:
         "rmse":         round(rmse_val, 6),
         "regime":       _regime_to_dict(regime),
         "historical":   _historical_ohlc(),
+        "cache_status": cache_status,
+        "cache_label":  CACHE_STATUS_LABEL.get(cache_status, ""),
+        "cache_info":   _cache_info(algorithm, symbol),
     }
 
 
-def run_all_forecast(job, symbol: str) -> dict:
+def run_all_forecast(job, symbol: str, force_retrain: bool = False) -> dict:
     """Train all four models, compare RMSE → return result dict."""
     job.progress = f"Fetching data for {symbol}…"
     df, details  = fetch_data(symbol)
@@ -186,12 +219,16 @@ def run_all_forecast(job, symbol: str) -> dict:
     algos        = ["lstm", "bilstm", "gru", "cnn_lstm"]
     all_preds    = {}
     all_rmse     = {}
+    all_cache    = {}
 
     for algo in algos:
-        job.progress = f"Training {ALGO_DISPLAY[algo]}…"
-        pred, rmse   = ALGO_FUNCS[algo](df)
+        job.progress = f"{'Retraining' if force_retrain else 'Loading / training'} {ALGO_DISPLAY[algo]}…"
+        pred, rmse, model_obj = ALGO_FUNCS[algo](
+            df, symbol=symbol, force_retrain=force_retrain, return_model=True
+        )
         all_preds[algo] = pred.tolist()
         all_rmse[algo]  = round(rmse["close"] if isinstance(rmse, dict) else float(rmse), 6)
+        all_cache[algo] = getattr(model_obj, "cache_status", "miss")
 
     job.progress = "Detecting market regime…"
     regime = detect_regime(df)
@@ -219,6 +256,14 @@ def run_all_forecast(job, symbol: str) -> dict:
 
     best_algo = min(all_rmse, key=all_rmse.get)
 
+    # Overall status: 'miss' if anything was trained, else 'warm'/'fresh'
+    if "miss" in all_cache.values():
+        overall = "miss"
+    elif "warm" in all_cache.values():
+        overall = "warm"
+    else:
+        overall = "fresh"
+
     return {
         "symbol":          symbol,
         "company_name":    details["scheme_name"],
@@ -229,6 +274,9 @@ def run_all_forecast(job, symbol: str) -> dict:
         "best_algo":       best_algo,
         "regime":          _regime_to_dict(regime),
         "historical":      _historical_ohlc(),
+        "cache_status":    overall,
+        "cache_label":     CACHE_STATUS_LABEL.get(overall, ""),
+        "cache_per_algo":  all_cache,
     }
 
 

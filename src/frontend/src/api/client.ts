@@ -3,6 +3,7 @@ import type {
   JobResponse,
   RegimeAnalysisResult,
   SymbolResult,
+  CacheListResponse,
 } from '../types'
 
 const api = axios.create({ baseURL: '/api' })
@@ -17,8 +18,13 @@ export const searchSymbols = async (q: string): Promise<SymbolResult[]> => {
 export const startForecast = async (
   symbol: string,
   algorithm: string,
+  forceRetrain = false,
 ): Promise<string> => {
-  const { data } = await api.post<{ job_id: string }>('/forecast', { symbol, algorithm })
+  const { data } = await api.post<{ job_id: string }>('/forecast', {
+    symbol,
+    algorithm,
+    force_retrain: forceRetrain,
+  })
   return data.job_id
 }
 
@@ -33,6 +39,27 @@ export const fetchRegimeAnalysis = async (
   symbol: string,
 ): Promise<RegimeAnalysisResult> => {
   const { data } = await api.post<RegimeAnalysisResult>(`/regime/${symbol}`)
+  return data
+}
+
+// ── Model weight cache ────────────────────────────────────────────────────────
+export const fetchCachedModels = async (): Promise<CacheListResponse> => {
+  const { data } = await api.get<CacheListResponse>('/models/cached')
+  return data
+}
+
+export const fetchCachedModelsForSymbol = async (symbol: string) => {
+  const { data } = await api.get(`/models/cached/${symbol}`)
+  return data
+}
+
+export const deleteCachedModels = async (symbol: string) => {
+  const { data } = await api.delete(`/models/cached/${symbol}`)
+  return data
+}
+
+export const deleteCachedModel = async (symbol: string, model: string) => {
+  const { data } = await api.delete(`/models/cached/${symbol}/${model}`)
   return data
 }
 

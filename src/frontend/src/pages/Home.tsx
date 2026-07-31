@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { startForecast, fetchRegimeAnalysis } from '../api/client'
+import { startForecast, fetchRegimeAnalysis, deleteCachedModels } from '../api/client'
 import { useJob } from '../hooks/useJob'
 import SymbolSearch       from '../components/SymbolSearch'
 import AlgorithmSelector  from '../components/AlgorithmSelector'
@@ -9,6 +9,7 @@ import AllAlgosTable      from '../components/AllAlgosTable'
 import ForecastChart      from '../components/ForecastChart'
 import RegimeCard         from '../components/RegimeCard'
 import PatternList        from '../components/PatternList'
+import CacheBadge         from '../components/CacheBadge'
 import toast              from 'react-hot-toast'
 import type {
   SingleForecastResult,
@@ -26,6 +27,8 @@ export default function Home() {
   const [tab,       setTab]       = useState<TabId>('forecast')
   const [regimeResult, setRegimeResult] = useState<RegimeAnalysisResult | null>(null)
   const [regimeLoading, setRegimeLoading] = useState(false)
+  const [forceRetrain, setForceRetrain] = useState(false)
+  const [clearing, setClearing] = useState(false)
 
   const job = useJob(jobId)
 
@@ -41,10 +44,14 @@ export default function Home() {
     setJobId(null)
     setRegimeResult(null)
     try {
-      const id = await startForecast(symbol, algorithm)
+      const id = await startForecast(symbol, algorithm, forceRetrain)
       setJobId(id)
       setTab('forecast')
-      toast.success(`Job started for ${symbol}`)
+      toast.success(
+        forceRetrain
+          ? `Retraining ${symbol} from scratch`
+          : `Job started for ${symbol}`,
+      )
     } catch (e: any) {
       toast.error(e?.response?.data?.detail ?? 'Failed to start job')
     }
@@ -63,6 +70,19 @@ export default function Home() {
     } catch (e: any) {
       toast.error(e?.response?.data?.detail ?? 'Regime analysis failed')
     } finally { setRegimeLoading(false) }
+  }
+
+  const handleClearCache = async () => {
+    if (!symbol.trim()) { toast.error('Please select a symbol first'); return }
+    setClearing(true)
+    try {
+      const res = await deleteCachedModels(symbol)
+      toast.success(`Cleared ${res.deleted} cached model(s) for ${symbol}`)
+    } catch (e: any) {
+      toast.error(e?.response?.status === 404
+        ? `No cached models for ${symbol}`
+        : 'Failed to clear cache')
+    } finally { setClearing(false) }
   }
 
   const isRunning = job?.status === 'pending' || job?.status === 'running'
@@ -89,6 +109,27 @@ export default function Home() {
           <SymbolSearch value={symbol} onChange={handleSymbol} />
           <AlgorithmSelector value={algorithm} onChange={setAlgorithm} />
 
+          {/* Force retrain toggle */}
+          <label className="flex items-start gap-2.5 cursor-pointer select-none group">
+            <input
+              type="checkbox"
+              checked={forceRetrain}
+              onChange={e => setForceRetrain(e.target.checked)}
+              disabled={isRunning || regimeLoading}
+              className="mt-0.5 w-4 h-4 shrink-0 rounded border-slate-600 bg-slate-800
+                         text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900
+                         disabled:opacity-40 cursor-pointer"
+            />
+            <span className="text-xs leading-tight">
+              <span className="font-medium text-slate-300 group-hover:text-white transition">
+                Force retrain
+              </span>
+              <span className="block text-slate-500 mt-0.5">
+                Ignore saved weights and train from scratch
+              </span>
+            </span>
+          </label>
+
           <button
             onClick={handleRun}
             disabled={isRunning || regimeLoading || !symbol}
@@ -96,7 +137,9 @@ export default function Home() {
                        disabled:opacity-40 disabled:cursor-not-allowed
                        text-sm font-semibold text-white transition"
           >
-            {isRunning ? 'Training…' : '▶  Run Forecast'}
+            {isRunning
+              ? (forceRetrain ? 'Retraining…' : 'Running…')
+              : (forceRetrain ? '⟳  Retrain & Forecast' : '▶  Run Forecast')}
           </button>
 
           <button
@@ -107,6 +150,16 @@ export default function Home() {
                        text-sm font-medium text-slate-200 transition"
           >
             {regimeLoading ? 'Analysing…' : '🔍  Regime & Pattern Analysis'}
+          </button>
+
+          <button
+            onClick={handleClearCache}
+            disabled={isRunning || regimeLoading || clearing || !symbol}
+            className="w-full py-1.5 rounded-lg border border-slate-700 hover:border-red-500/40
+                       hover:text-red-400 disabled:opacity-40 disabled:cursor-not-allowed
+                       text-xs font-medium text-slate-500 transition"
+          >
+            {clearing ? 'Clearing…' : `🗑  Clear saved weights${symbol ? ` for ${symbol}` : ''}`}
           </button>
         </div>
 
@@ -132,11 +185,18 @@ export default function Home() {
       <main className="min-w-0">
         {/* Title bar */}
         {(result || regimeResult) && (
-          <div className="mb-4">
+          <div className="mb-4 flex items-center justify-between gap-4 flex-wrap">
             <h2 className="text-lg font-bold text-white">
               {result?.company_name ?? regimeResult?.company_name}{' '}
               <span className="text-slate-500 font-mono text-base">({symbol})</span>
             </h2>
+            {isDone && result && (
+              <CacheBadge
+                status={result.cache_status}
+                label={result.cache_label}
+                info={(result as SingleForecastResult).cache_info}
+              />
+            )}
           </div>
         )}
 
