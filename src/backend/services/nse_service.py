@@ -74,7 +74,22 @@ def _cache_info(algorithm: str, symbol: str) -> dict:
 
 
 def fetch_data(symbol: str):
-    """Fetch + preprocess data for a given NSE symbol."""
+    """
+    Fetch + preprocess data for a given NSE symbol.
+
+    IMPORTANT: config.HISTORIC_DATA is a module-level global written by
+    preprocess_nse_df(). The backend runs jobs concurrently (ThreadPoolExecutor),
+    so if we read that global again *later* (e.g. after a long model-training
+    step), a different concurrent job may have already overwritten it with
+    another symbol's data — producing an empty/wrong candlestick chart.
+
+    To avoid this race we snapshot the reference right here, immediately after
+    preprocessing, and thread it through explicitly as `hist_df` to every
+    downstream call (chart data, pattern detection) instead of touching
+    config.HISTORIC_DATA again. preprocess_nse_df() always assigns a brand-new
+    DataFrame object (`.copy()`), so this local reference stays valid and
+    untouched even if the global name is reassigned afterwards.
+    """
     from nselib import capital_market
 
     ticker_info = capital_market.equity_list()
@@ -89,17 +104,17 @@ def fetch_data(symbol: str):
 
     df      = _load_or_fetch(symbol, from_date, to_date)
     df      = preprocess_nse_df(df)          # also sets config.HISTORIC_DATA
+    hist_df = config.HISTORIC_DATA           # snapshot immediately — race-safe
 
     details = {
         "scheme_name": ticker_info["NAME OF COMPANY"].values[0],
         "scheme_code": str(symbol),
     }
-    return df, details
+    return df, details, hist_df
 
 
-def _historical_ohlc(n: int = 120) -> list:
-    """Return last n rows of OHLC from config.HISTORIC_DATA (includes open)."""
-    hist_df = config.HISTORIC_DATA
+def _historical_ohlc(hist_df, n: int = 120) -> list:
+    """Return last n rows of OHLC from the given historic dataframe (includes open)."""
     if hist_df is None:
         return []
     # Mandatory columns — rows without these are useless for the chart
@@ -111,6 +126,11 @@ def _historical_ohlc(n: int = 120) -> list:
     tail = hist_df[cols].tail(n).copy()
     # Only drop rows where the mandatory columns are missing
     tail = tail.dropna(subset=mandatory)
+    # Defensive: lightweight-charts requires strictly ascending, unique
+    # timestamps — de-duplicate by date (keep last) in case the source data
+    # ever contains overlapping rows for the same trading day.
+    if "date" in tail.columns:
+        tail = tail.drop_duplicates(subset=["date"], keep="last")
 
     records = []
     for _, row in tail.iterrows():
@@ -123,9 +143,9 @@ def _historical_ohlc(n: int = 120) -> list:
     return records
 
 
-def _build_forecast_days(pred: np.ndarray, signals: list | None) -> list:
+def _build_forecast_days(pred: np.ndarray, signals: list | None, hist_df) -> list:
     """Convert raw prediction array to list of dicts with signal info."""
-    last_date    = pd.to_datetime(config.HISTORIC_DATA["Date"]).max()
+    last_date    = pd.to_datetime(hist_df["Date"]).max()
     future_dates = pd.bdate_range(
         start=last_date + pd.Timedelta(days=1), periods=config.FORECAST_DAYS
     )
@@ -171,7 +191,7 @@ def _regime_to_dict(regime: dict) -> dict:
 def run_single_forecast(job, symbol: str, algorithm: str, force_retrain: bool = False) -> dict:
     """Train one model, run classifier, apply regime → return result dict."""
     job.progress = f"Fetching data for {symbol}…"
-    df, details  = fetch_data(symbol)
+    df, details, hist_df = fetch_data(symbol)
 
     if algorithm not in ALGO_FUNCS:
         raise ValueError(f"Unknown algorithm: {algorithm}")
@@ -201,10 +221,10 @@ def run_single_forecast(job, symbol: str, algorithm: str, force_retrain: bool = 
         "company_name": details["scheme_name"],
         "algorithm":    algorithm,
         "display_name": ALGO_DISPLAY[algorithm],
-        "forecast":     _build_forecast_days(pred, signals),
+        "forecast":     _build_forecast_days(pred, signals, hist_df),
         "rmse":         round(rmse_val, 6),
         "regime":       _regime_to_dict(regime),
-        "historical":   _historical_ohlc(),
+        "historical":   _historical_ohlc(hist_df),
         "cache_status": cache_status,
         "cache_label":  CACHE_STATUS_LABEL.get(cache_status, ""),
         "cache_info":   _cache_info(algorithm, symbol),
@@ -214,7 +234,7 @@ def run_single_forecast(job, symbol: str, algorithm: str, force_retrain: bool = 
 def run_all_forecast(job, symbol: str, force_retrain: bool = False) -> dict:
     """Train all four models, compare RMSE → return result dict."""
     job.progress = f"Fetching data for {symbol}…"
-    df, details  = fetch_data(symbol)
+    df, details, hist_df = fetch_data(symbol)
 
     algos        = ["lstm", "bilstm", "gru", "cnn_lstm"]
     all_preds    = {}
@@ -234,7 +254,7 @@ def run_all_forecast(job, symbol: str, force_retrain: bool = False) -> dict:
     regime = detect_regime(df)
 
     # Build per-algo forecast day lists (no signals in "all" mode)
-    last_date    = pd.to_datetime(config.HISTORIC_DATA["Date"]).max()
+    last_date    = pd.to_datetime(hist_df["Date"]).max()
     future_dates = pd.bdate_range(
         start=last_date + pd.Timedelta(days=1), periods=config.FORECAST_DAYS
     )
@@ -273,7 +293,7 @@ def run_all_forecast(job, symbol: str, force_retrain: bool = False) -> dict:
         "all_rmse":        all_rmse,
         "best_algo":       best_algo,
         "regime":          _regime_to_dict(regime),
-        "historical":      _historical_ohlc(),
+        "historical":      _historical_ohlc(hist_df),
         "cache_status":    overall,
         "cache_label":     CACHE_STATUS_LABEL.get(overall, ""),
         "cache_per_algo":  all_cache,
@@ -282,11 +302,11 @@ def run_all_forecast(job, symbol: str, force_retrain: bool = False) -> dict:
 
 def run_regime_analysis(symbol: str) -> dict:
     """Fetch data, detect regime + candlestick patterns."""
-    df, details = fetch_data(symbol)
+    df, details, hist_df = fetch_data(symbol)
 
     regime = detect_regime(df)
 
-    pattern_df, active_pats = detect_patterns(config.HISTORIC_DATA)
+    pattern_df, active_pats = detect_patterns(hist_df)
     patterns = [
         {
             "name":      pat.replace("_", " "),
@@ -306,7 +326,7 @@ def run_regime_analysis(symbol: str) -> dict:
         "regime":       _regime_to_dict(regime),
         "patterns":     patterns,
         "insight":      insight,
-        "historical":   _historical_ohlc(),
+        "historical":   _historical_ohlc(hist_df),
     }
 
 
