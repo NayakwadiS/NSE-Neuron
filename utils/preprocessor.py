@@ -34,11 +34,21 @@ def convert_price_columns(df):
 
 
 def parse_and_sort_dates(df):
-    """Parse Date column to datetime, sort ascending (oldest → newest)."""
+    """Parse Date column to datetime, dedupe, sort ascending (oldest → newest).
+
+    NSE's API sometimes returns overlapping rows for the same trading day
+    (e.g. when date-range windows overlap during pagination), which produces
+    duplicate 'Date' entries. Downstream chart rendering (lightweight-charts)
+    requires strictly ascending, unique timestamps — a duplicate causes it to
+    throw and silently blank the whole chart. We de-duplicate here, keeping
+    the last occurrence (assumed most authoritative / most recently fetched).
+    """
     df = df.copy()
     df.reset_index(inplace=True)
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-    df = df.sort_values(by='Date', ascending=True).reset_index(drop=True)
+    df = df.dropna(subset=['Date'])
+    df = df.sort_values(by='Date', ascending=True)
+    df = df.drop_duplicates(subset=['Date'], keep='last').reset_index(drop=True)
     df['date'] = df['Date'].dt.strftime('%Y-%m-%d')
     return df
 

@@ -8,6 +8,7 @@ from tensorflow.keras.layers import LSTM as KerasLSTM
 from tensorflow.keras.layers import Dropout
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.utils import to_categorical
+from utils import model_registry
 from config import (
     SIGNAL_COLORS,
     SIGNAL_LABELS,
@@ -177,7 +178,7 @@ def _make_labels(close_series, threshold=None):
 
 
 # ─────────────────────────── main function ────────────────────────────────────
-def lstm_classifier(df, pred_prices):
+def lstm_classifier(df, pred_prices, symbol=None, force_retrain=False):
     """
     Train an LSTM BUY/SELL/HOLD classifier on technical indicators,
     then predict one signal per forecast day using the regression model's
@@ -185,8 +186,10 @@ def lstm_classifier(df, pred_prices):
 
     Parameters
     ----------
-    df          : full historical OHLC DataFrame (from getData)
-    pred_prices : np.ndarray (5, 4)  — [high, low, close, prev_close] per day
+    df            : full historical OHLC DataFrame (from getData)
+    pred_prices   : np.ndarray (5, 4)  — [high, low, close, prev_close] per day
+    symbol        : NSE symbol — enables the per-symbol classifier weight cache
+    force_retrain : ignore cached weights and train from scratch
 
     Returns
     -------
@@ -226,16 +229,40 @@ def lstm_classifier(df, pred_prices):
     label_dist = dict(zip([SIGNAL_LABELS[u] for u in unique], counts))
     print(f"\n  [Classifier] Label distribution: {label_dist}")
 
-    # ── 4. Scale — fit on training rows only (no future leakage) ─────────────
-    feat_scaler = MinMaxScaler(feature_range=(0, 1))
-    feat_scaler.fit(X_for_train)
+    # ── 4. Weight cache lookup ───────────────────────────────────────────────
+    # The classifier is cached separately from the regression model because it
+    # has its own architecture, its own scaler and its own feature set.
+    time_step = CLASSIFIER_TIME_STEP   # longer lookback gives more context to the LSTM
+
+    cache_sig = model_registry.build_signature('LSTM-CLF', df, {
+        'time_step':    time_step,
+        'feat_columns': feat_columns,          # order matters — guards silent corruption
+        'threshold':    CLASSIFIER_THRESHOLD,
+        'units':        [CLASSIFIER_LSTM_UNITS_1, CLASSIFIER_LSTM_UNITS_2],
+        'dense':        CLASSIFIER_DENSE_UNITS,
+        'dropout':      CLASSIFIER_DROPOUT,
+        'split':        CLASSIFIER_TRAIN_SPLIT,
+        'arch':         'lstm-classifier',
+    })
+    cached_model, cached_scaler, cache_status, _meta = model_registry.load(
+        symbol, 'LSTM-CLF', cache_sig, force_retrain=force_retrain
+    )
+
+    # ── 5. Scale — reuse the cached scaler on a hit, otherwise fit a new one ──
+    # Fitting a fresh scaler while reusing cached weights would feed the network
+    # data in a different numeric space, so the two must always travel together.
+    if cache_status == 'miss':
+        feat_scaler = MinMaxScaler(feature_range=(0, 1))
+        feat_scaler.fit(X_for_train)
+    else:
+        feat_scaler = cached_scaler
+
     X_scaled_train = feat_scaler.transform(X_for_train)  # (N-1, 18)
 
     # Also scale the last real row (used as forecast seed)
     last_real_row_scaled = feat_scaler.transform(feat_vals[-1:])  # (1, 18)
 
-    # ── 5. Sequences (lookback from config) ───────────────────────────────────
-    time_step = CLASSIFIER_TIME_STEP   # longer lookback gives more context to the LSTM
+    # ── 6. Sequences (lookback from config) ───────────────────────────────────
 
     def make_sequences(X, y, ts):
         Xs, ys = [], []
@@ -263,41 +290,55 @@ def lstm_classifier(df, pred_prices):
     print(f"  [Classifier] Train: {len(Xtr)}  Val: {len(Xval)}")
     print(f"  [Classifier] Class weights — SELL:{cw[0]:.2f}  HOLD:{cw[1]:.2f}  BUY:{cw[2]:.2f}\n")
 
-    # ── 7. Build model ────────────────────────────────────────────────────────
+    # ── 7. Build / load model ─────────────────────────────────────────────────
     n_feat = X_seq.shape[2]
 
-    model = Sequential([
-        KerasLSTM(CLASSIFIER_LSTM_UNITS_1, return_sequences=True, input_shape=(time_step, n_feat)),
-        Dropout(CLASSIFIER_DROPOUT),
-        KerasLSTM(CLASSIFIER_LSTM_UNITS_2),
-        Dropout(CLASSIFIER_DROPOUT),
-        Dense(CLASSIFIER_DENSE_UNITS, activation='relu'),
-        Dense(3,  activation='softmax'),
-    ])
-    model.compile(
-        loss='categorical_crossentropy',
-        optimizer='adam',
-        metrics=['accuracy']
-    )
+    if cache_status == 'miss':
+        model = Sequential([
+            KerasLSTM(CLASSIFIER_LSTM_UNITS_1, return_sequences=True, input_shape=(time_step, n_feat)),
+            Dropout(CLASSIFIER_DROPOUT),
+            KerasLSTM(CLASSIFIER_LSTM_UNITS_2),
+            Dropout(CLASSIFIER_DROPOUT),
+            Dense(CLASSIFIER_DENSE_UNITS, activation='relu'),
+            Dense(3,  activation='softmax'),
+        ])
+        model.compile(
+            loss='categorical_crossentropy',
+            optimizer='adam',
+            metrics=['accuracy']
+        )
 
-    # Monitor val_loss — more stable than val_accuracy for class-imbalanced data
-    early_stop = EarlyStopping(
-        monitor='val_loss',
-        patience=CLASSIFIER_PATIENCE,
-        restore_best_weights=True,
-        verbose=1,
-        min_delta=CLASSIFIER_MIN_DELTA   # must improve by at least this amount to count
-    )
+        # Monitor val_loss — more stable than val_accuracy for class-imbalanced data
+        early_stop = EarlyStopping(
+            monitor='val_loss',
+            patience=CLASSIFIER_PATIENCE,
+            restore_best_weights=True,
+            verbose=1,
+            min_delta=CLASSIFIER_MIN_DELTA   # must improve by at least this amount to count
+        )
 
-    model.fit(
-        Xtr, ytr_cat,
-        validation_data=(Xval, yval_cat),
-        epochs=CLASSIFIER_EPOCHS,
-        batch_size=CLASSIFIER_BATCH_SIZE,    # small batch — more weight updates per epoch
-        verbose=1,
-        class_weight=cw_dict,
-        callbacks=[early_stop]
-    )
+        model.fit(
+            Xtr, ytr_cat,
+            validation_data=(Xval, yval_cat),
+            epochs=CLASSIFIER_EPOCHS,
+            batch_size=CLASSIFIER_BATCH_SIZE,    # small batch — more weight updates per epoch
+            verbose=1,
+            class_weight=cw_dict,
+            callbacks=[early_stop]
+        )
+    else:
+        model = cached_model
+        if cache_status == 'warm':
+            print("  [Cache] Warm-starting LSTM classifier on newest sequences…")
+            model_registry.warm_start(model, X_seq, to_categorical(y_seq, num_classes=3),
+                                      batch_size=CLASSIFIER_BATCH_SIZE,
+                                      class_weight=cw_dict)
+        else:
+            print("  [Cache] Using cached LSTM classifier weights as-is (no training).")
+
+    # Persist unless nothing changed
+    if cache_status != 'fresh':
+        model_registry.save(symbol, 'LSTM-CLF', model, feat_scaler, cache_sig)
 
     # ── 8. Rolling 5-day signal forecast ──────────────────────────────────────
     # Build seed: last `time_step` rows of scaled training features

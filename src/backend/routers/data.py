@@ -6,7 +6,6 @@ GET /api/historical/{sym} — historical OHLC for charting
 """
 from fastapi import APIRouter, HTTPException, Query
 from src.backend.services.nse_service import search_symbols, fetch_data
-import config
 
 router = APIRouter()
 
@@ -23,8 +22,10 @@ def symbols(q: str = Query(default="", min_length=1)):
 def historical(symbol: str, days: int = 120):
     sym = symbol.upper().strip()
     try:
-        fetch_data(sym)          # populates config.HISTORIC_DATA
-        hist_df = config.HISTORIC_DATA
+        # Snapshot the dataframe returned directly from fetch_data instead of
+        # re-reading config.HISTORIC_DATA — the latter is a shared global that
+        # a concurrent request/job could have already overwritten by now.
+        _, _, hist_df = fetch_data(sym)
         if hist_df is None:
             raise HTTPException(status_code=404, detail="No data")
 

@@ -6,6 +6,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, GRU as KerasGRU
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.utils import to_categorical
+from utils import model_registry
 from config import (
     SIGNAL_COLORS,
     SIGNAL_LABELS,
@@ -141,15 +142,17 @@ def _make_labels(close_series, threshold=None):
 
 
 # ─────────────────────────── main function ────────────────────────────────────
-def gru_classifier(df, pred_prices):
+def gru_classifier(df, pred_prices, symbol=None, force_retrain=False):
     """
     Train a GRU BUY/SELL/HOLD classifier on technical indicators,
     then predict one signal per forecast day.
 
     Parameters
     ----------
-    df          : full historical OHLC DataFrame (from getData)
-    pred_prices : np.ndarray (FORECAST_DAYS, 4)  — [high, low, close, prev_close] per day
+    df            : full historical OHLC DataFrame (from getData)
+    pred_prices   : np.ndarray (FORECAST_DAYS, 4)  — [high, low, close, prev_close] per day
+    symbol        : NSE symbol — enables the per-symbol classifier weight cache
+    force_retrain : ignore cached weights and train from scratch
 
     Returns
     -------
@@ -182,13 +185,32 @@ def gru_classifier(df, pred_prices):
     label_dist = dict(zip([SIGNAL_LABELS[u] for u in unique], counts))
     print(f"\n  [GRU Classifier] Label distribution: {label_dist}")
 
-    # ── 4. Scale ─────────────────────────────────────────────────────────────
-    feat_scaler = MinMaxScaler(feature_range=(0, 1))
-    feat_scaler.fit(X_for_train)
+    # ── 4. Weight cache lookup ───────────────────────────────────────────────
+    time_step = CLASSIFIER_TIME_STEP
+
+    cache_sig = model_registry.build_signature('GRU-CLF', df, {
+        'time_step':    time_step,
+        'feat_columns': feat_columns,
+        'threshold':    CLASSIFIER_THRESHOLD,
+        'units':        [CLASSIFIER_LSTM_UNITS_1, CLASSIFIER_LSTM_UNITS_2],
+        'dense':        CLASSIFIER_DENSE_UNITS,
+        'dropout':      CLASSIFIER_DROPOUT,
+        'split':        CLASSIFIER_TRAIN_SPLIT,
+        'arch':         'gru-classifier',
+    })
+    cached_model, cached_scaler, cache_status, _meta = model_registry.load(
+        symbol, 'GRU-CLF', cache_sig, force_retrain=force_retrain
+    )
+
+    # ── 5. Scale — cached weights and cached scaler must always travel together
+    if cache_status == 'miss':
+        feat_scaler = MinMaxScaler(feature_range=(0, 1))
+        feat_scaler.fit(X_for_train)
+    else:
+        feat_scaler = cached_scaler
     X_scaled_train = feat_scaler.transform(X_for_train)
 
-    # ── 5. Sequences ─────────────────────────────────────────────────────────
-    time_step = CLASSIFIER_TIME_STEP
+    # ── 6. Sequences ─────────────────────────────────────────────────────────
 
     def make_sequences(X, y, ts):
         Xs, ys = [], []
@@ -201,7 +223,7 @@ def gru_classifier(df, pred_prices):
 
     print(f"  [GRU Classifier] Total sequences: {len(X_seq)}")
 
-    # ── 6. Train / val split ─────────────────────────────────────────────────
+    # ── 7. Train / val split ─────────────────────────────────────────────────
     split      = int(len(X_seq) * CLASSIFIER_TRAIN_SPLIT)
     Xtr, Xval  = X_seq[:split], X_seq[split:]
     ytr, yval  = y_seq[:split], y_seq[split:]
@@ -215,42 +237,55 @@ def gru_classifier(df, pred_prices):
     print(f"  [GRU Classifier] Train: {len(Xtr)}  Val: {len(Xval)}")
     print(f"  [GRU Classifier] Class weights — SELL:{cw[0]:.2f}  HOLD:{cw[1]:.2f}  BUY:{cw[2]:.2f}\n")
 
-    # ── 7. Build GRU model ───────────────────────────────────────────────────
+    # ── 8. Build / load GRU model ────────────────────────────────────────────
     n_feat = X_seq.shape[2]
 
-    model = Sequential([
-        KerasGRU(CLASSIFIER_LSTM_UNITS_1, return_sequences=True, input_shape=(time_step, n_feat)),
-        Dropout(CLASSIFIER_DROPOUT),
-        KerasGRU(CLASSIFIER_LSTM_UNITS_2),
-        Dropout(CLASSIFIER_DROPOUT),
-        Dense(CLASSIFIER_DENSE_UNITS, activation='relu'),
-        Dense(3, activation='softmax'),
-    ])
-    model.compile(
-        loss='categorical_crossentropy',
-        optimizer='adam',
-        metrics=['accuracy']
-    )
+    if cache_status == 'miss':
+        model = Sequential([
+            KerasGRU(CLASSIFIER_LSTM_UNITS_1, return_sequences=True, input_shape=(time_step, n_feat)),
+            Dropout(CLASSIFIER_DROPOUT),
+            KerasGRU(CLASSIFIER_LSTM_UNITS_2),
+            Dropout(CLASSIFIER_DROPOUT),
+            Dense(CLASSIFIER_DENSE_UNITS, activation='relu'),
+            Dense(3, activation='softmax'),
+        ])
+        model.compile(
+            loss='categorical_crossentropy',
+            optimizer='adam',
+            metrics=['accuracy']
+        )
 
-    early_stop = EarlyStopping(
-        monitor='val_loss',
-        patience=CLASSIFIER_PATIENCE,
-        restore_best_weights=True,
-        verbose=1,
-        min_delta=CLASSIFIER_MIN_DELTA
-    )
+        early_stop = EarlyStopping(
+            monitor='val_loss',
+            patience=CLASSIFIER_PATIENCE,
+            restore_best_weights=True,
+            verbose=1,
+            min_delta=CLASSIFIER_MIN_DELTA
+        )
 
-    model.fit(
-        Xtr, ytr_cat,
-        validation_data=(Xval, yval_cat),
-        epochs=CLASSIFIER_EPOCHS,
-        batch_size=CLASSIFIER_BATCH_SIZE,
-        verbose=1,
-        class_weight=cw_dict,
-        callbacks=[early_stop]
-    )
+        model.fit(
+            Xtr, ytr_cat,
+            validation_data=(Xval, yval_cat),
+            epochs=CLASSIFIER_EPOCHS,
+            batch_size=CLASSIFIER_BATCH_SIZE,
+            verbose=1,
+            class_weight=cw_dict,
+            callbacks=[early_stop]
+        )
+    else:
+        model = cached_model
+        if cache_status == 'warm':
+            print("  [Cache] Warm-starting GRU classifier on newest sequences…")
+            model_registry.warm_start(model, X_seq, to_categorical(y_seq, num_classes=3),
+                                      batch_size=CLASSIFIER_BATCH_SIZE,
+                                      class_weight=cw_dict)
+        else:
+            print("  [Cache] Using cached GRU classifier weights as-is (no training).")
 
-    # ── 8. Rolling forecast ──────────────────────────────────────────────────
+    if cache_status != 'fresh':
+        model_registry.save(symbol, 'GRU-CLF', model, feat_scaler, cache_sig)
+
+    # ── 9. Rolling forecast ──────────────────────────────────────────────────
     x_seed    = X_scaled_train[-time_step:].copy()
     ohlc_hist = raw[['close', 'high', 'low']].copy().reset_index(drop=True)
     signals   = []

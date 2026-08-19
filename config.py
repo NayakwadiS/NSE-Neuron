@@ -199,6 +199,37 @@ REGIME_MODEL_MAP = {
     'SIDEWAYS': 'GRU',        # ranging market → GRU
 }
 
+# ══════════════════════════════════════════════════════════════════════════════
+# MODEL WEIGHT CACHE (per symbol + per model)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Master switch. When False every run trains from scratch (original behaviour).
+ENABLE_MODEL_CACHE = True
+
+# Directory (relative to project root) where trained weights + scalers are stored
+MODEL_CACHE_DIR = 'saved_models'
+
+# Bump this string whenever preprocessing / feature engineering logic changes
+# in a way the automatic signature cannot detect. Invalidates every cached model.
+MODEL_CACHE_VERSION = '1'
+
+# How many newly appended trading days a cached model may be behind before a
+# full retrain is forced. Within this window the model is warm-started instead.
+#   new_bars == 0                 → 'fresh'  (load + predict, no training)
+#   0 < new_bars <= this value    → 'warm'   (load + short fine-tune)
+#   new_bars  > this value        → 'miss'   (full retrain)
+CACHE_MAX_STALE_DAYS = 10
+
+# Hard expiry — a cached model older than this is always retrained,
+# regardless of how many new bars arrived.
+CACHE_MAX_AGE_DAYS = 30
+
+# Warm-start (fine-tune) settings
+WARM_START_EPOCHS  = 15      # short burst of training on the newest data
+WARM_START_LR      = 1e-4    # much lower LR to avoid catastrophic forgetting
+WARM_START_SAMPLES = 250     # number of most-recent windows used for fine-tuning
+
+
 CLASSIFIER_LIST = {'1': "lstm_classifier", '2': "bilstm_classifier", '3': "gru_classifier", '4': "cnn_lstm_classifier"}
 HISTORIC_DATA = None
 PATTERN_COLS = ['HAMMER', 'ENGULFING', 'DOJI', 'SHOOTING_STAR', 'MORNING_STAR']

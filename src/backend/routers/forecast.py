@@ -15,6 +15,7 @@ router = APIRouter()
 class ForecastRequest(BaseModel):
     symbol:    str
     algorithm: str   # "lstm" | "bilstm" | "gru" | "cnn_lstm" | "all"
+    force_retrain: bool = False   # ignore cached weights and train from scratch
 
 
 @router.post("/forecast")
@@ -26,18 +27,22 @@ def start_forecast(req: ForecastRequest):
     if algorithm not in valid:
         raise HTTPException(status_code=400, detail=f"algorithm must be one of {valid}")
 
+    suffix = " (forced retrain)" if req.force_retrain else ""
+
     if algorithm == "all":
         job_id = job_manager.submit(
             run_all_forecast,
             symbol,
-            description=f"All algorithms — {symbol}",
+            req.force_retrain,
+            description=f"All algorithms — {symbol}{suffix}",
         )
     else:
         job_id = job_manager.submit(
             run_single_forecast,
             symbol,
             algorithm,
-            description=f"{algorithm.upper()} forecast — {symbol}",
+            req.force_retrain,
+            description=f"{algorithm.upper()} forecast — {symbol}{suffix}",
         )
 
     return {"job_id": job_id, "status": "pending"}

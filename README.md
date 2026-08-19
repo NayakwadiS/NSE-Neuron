@@ -79,4 +79,7 @@ Licensed under the terms of the [LICENSE](LICENSE) file.
 
 ---
 
+> 🚀 Check out **[NSE-AI](https://github.com/NayakwadiS/NSE_AI_)** — an AI-Powered NSE Stock Analysis & reasoning engine built on top of this project.
+
 <div align="center">Made with ❤️ for the Indian Stock Market</div>
+

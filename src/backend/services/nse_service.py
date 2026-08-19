@@ -18,6 +18,7 @@ from utils.data_fetcher import _load_or_fetch
 from utils.preprocessor  import preprocess_nse_df
 from utils.regime_detector import detect_regime, apply_regime_confidence
 from utils.pattern_detector import detect_patterns, combine_regime_patterns
+from utils import model_registry
 
 from models.lstm      import lstm
 from models.bilstm    import bilstm
@@ -50,9 +51,45 @@ ALGO_DISPLAY = {
     "gru": "GRU",   "cnn_lstm": "CNN-LSTM",
 }
 
+# Registry model names used by the weight cache (must match models/*.py)
+REGISTRY_NAMES = {
+    "lstm": "LSTM", "bilstm": "BiLSTM",
+    "gru": "GRU",   "cnn_lstm": "CNN-LSTM",
+}
+
+CACHE_STATUS_LABEL = {
+    "fresh": "Loaded cached model — no training needed",
+    "warm":  "Cached model fine-tuned on the newest bars",
+    "miss":  "Trained from scratch",
+}
+
+
+def _cache_info(algorithm: str, symbol: str) -> dict:
+    """Read back what the registry knows about the model we just used."""
+    name = REGISTRY_NAMES.get(algorithm, algorithm)
+    for entry in model_registry.list_cached():
+        if entry["symbol"] == symbol.upper() and entry["model"] == name:
+            return {"trained_at": entry.get("trained_at"), "n_rows": entry.get("n_rows")}
+    return {}
+
 
 def fetch_data(symbol: str):
-    """Fetch + preprocess data for a given NSE symbol."""
+    """
+    Fetch + preprocess data for a given NSE symbol.
+
+    IMPORTANT: config.HISTORIC_DATA is a module-level global written by
+    preprocess_nse_df(). The backend runs jobs concurrently (ThreadPoolExecutor),
+    so if we read that global again *later* (e.g. after a long model-training
+    step), a different concurrent job may have already overwritten it with
+    another symbol's data — producing an empty/wrong candlestick chart.
+
+    To avoid this race we snapshot the reference right here, immediately after
+    preprocessing, and thread it through explicitly as `hist_df` to every
+    downstream call (chart data, pattern detection) instead of touching
+    config.HISTORIC_DATA again. preprocess_nse_df() always assigns a brand-new
+    DataFrame object (`.copy()`), so this local reference stays valid and
+    untouched even if the global name is reassigned afterwards.
+    """
     from nselib import capital_market
 
     ticker_info = capital_market.equity_list()
@@ -67,17 +104,17 @@ def fetch_data(symbol: str):
 
     df      = _load_or_fetch(symbol, from_date, to_date)
     df      = preprocess_nse_df(df)          # also sets config.HISTORIC_DATA
+    hist_df = config.HISTORIC_DATA           # snapshot immediately — race-safe
 
     details = {
         "scheme_name": ticker_info["NAME OF COMPANY"].values[0],
         "scheme_code": str(symbol),
     }
-    return df, details
+    return df, details, hist_df
 
 
-def _historical_ohlc(n: int = 120) -> list:
-    """Return last n rows of OHLC from config.HISTORIC_DATA (includes open)."""
-    hist_df = config.HISTORIC_DATA
+def _historical_ohlc(hist_df, n: int = 120) -> list:
+    """Return last n rows of OHLC from the given historic dataframe (includes open)."""
     if hist_df is None:
         return []
     # Mandatory columns — rows without these are useless for the chart
@@ -89,6 +126,11 @@ def _historical_ohlc(n: int = 120) -> list:
     tail = hist_df[cols].tail(n).copy()
     # Only drop rows where the mandatory columns are missing
     tail = tail.dropna(subset=mandatory)
+    # Defensive: lightweight-charts requires strictly ascending, unique
+    # timestamps — de-duplicate by date (keep last) in case the source data
+    # ever contains overlapping rows for the same trading day.
+    if "date" in tail.columns:
+        tail = tail.drop_duplicates(subset=["date"], keep="last")
 
     records = []
     for _, row in tail.iterrows():
@@ -101,9 +143,9 @@ def _historical_ohlc(n: int = 120) -> list:
     return records
 
 
-def _build_forecast_days(pred: np.ndarray, signals: list | None) -> list:
+def _build_forecast_days(pred: np.ndarray, signals: list | None, hist_df) -> list:
     """Convert raw prediction array to list of dicts with signal info."""
-    last_date    = pd.to_datetime(config.HISTORIC_DATA["Date"]).max()
+    last_date    = pd.to_datetime(hist_df["Date"]).max()
     future_dates = pd.bdate_range(
         start=last_date + pd.Timedelta(days=1), periods=config.FORECAST_DAYS
     )
@@ -146,20 +188,28 @@ def _regime_to_dict(regime: dict) -> dict:
 
 # ── Public service functions ──────────────────────────────────────────────────
 
-def run_single_forecast(job, symbol: str, algorithm: str) -> dict:
+def run_single_forecast(job, symbol: str, algorithm: str, force_retrain: bool = False) -> dict:
     """Train one model, run classifier, apply regime → return result dict."""
     job.progress = f"Fetching data for {symbol}…"
-    df, details  = fetch_data(symbol)
+    df, details, hist_df = fetch_data(symbol)
 
     if algorithm not in ALGO_FUNCS:
         raise ValueError(f"Unknown algorithm: {algorithm}")
 
-    job.progress = f"Training {ALGO_DISPLAY[algorithm]} model…"
-    pred, rmse   = ALGO_FUNCS[algorithm](df)
+    job.progress = (
+        f"Retraining {ALGO_DISPLAY[algorithm]} model…" if force_retrain
+        else f"Loading / training {ALGO_DISPLAY[algorithm]} model…"
+    )
+    pred, rmse, model_obj = ALGO_FUNCS[algorithm](
+        df, symbol=symbol, force_retrain=force_retrain, return_model=True
+    )
     rmse_val     = rmse["close"] if isinstance(rmse, dict) else float(rmse)
+    cache_status = getattr(model_obj, "cache_status", "miss")
 
     job.progress = f"Running {ALGO_DISPLAY[algorithm]} classifier…"
-    signals      = CLASSIFIER_FUNCS[algorithm](df, pred)
+    signals      = CLASSIFIER_FUNCS[algorithm](
+        df, pred, symbol=symbol, force_retrain=force_retrain
+    )
 
     job.progress = "Detecting market regime…"
     regime       = detect_regime(df)
@@ -171,33 +221,40 @@ def run_single_forecast(job, symbol: str, algorithm: str) -> dict:
         "company_name": details["scheme_name"],
         "algorithm":    algorithm,
         "display_name": ALGO_DISPLAY[algorithm],
-        "forecast":     _build_forecast_days(pred, signals),
+        "forecast":     _build_forecast_days(pred, signals, hist_df),
         "rmse":         round(rmse_val, 6),
         "regime":       _regime_to_dict(regime),
-        "historical":   _historical_ohlc(),
+        "historical":   _historical_ohlc(hist_df),
+        "cache_status": cache_status,
+        "cache_label":  CACHE_STATUS_LABEL.get(cache_status, ""),
+        "cache_info":   _cache_info(algorithm, symbol),
     }
 
 
-def run_all_forecast(job, symbol: str) -> dict:
+def run_all_forecast(job, symbol: str, force_retrain: bool = False) -> dict:
     """Train all four models, compare RMSE → return result dict."""
     job.progress = f"Fetching data for {symbol}…"
-    df, details  = fetch_data(symbol)
+    df, details, hist_df = fetch_data(symbol)
 
     algos        = ["lstm", "bilstm", "gru", "cnn_lstm"]
     all_preds    = {}
     all_rmse     = {}
+    all_cache    = {}
 
     for algo in algos:
-        job.progress = f"Training {ALGO_DISPLAY[algo]}…"
-        pred, rmse   = ALGO_FUNCS[algo](df)
+        job.progress = f"{'Retraining' if force_retrain else 'Loading / training'} {ALGO_DISPLAY[algo]}…"
+        pred, rmse, model_obj = ALGO_FUNCS[algo](
+            df, symbol=symbol, force_retrain=force_retrain, return_model=True
+        )
         all_preds[algo] = pred.tolist()
         all_rmse[algo]  = round(rmse["close"] if isinstance(rmse, dict) else float(rmse), 6)
+        all_cache[algo] = getattr(model_obj, "cache_status", "miss")
 
     job.progress = "Detecting market regime…"
     regime = detect_regime(df)
 
     # Build per-algo forecast day lists (no signals in "all" mode)
-    last_date    = pd.to_datetime(config.HISTORIC_DATA["Date"]).max()
+    last_date    = pd.to_datetime(hist_df["Date"]).max()
     future_dates = pd.bdate_range(
         start=last_date + pd.Timedelta(days=1), periods=config.FORECAST_DAYS
     )
@@ -219,6 +276,14 @@ def run_all_forecast(job, symbol: str) -> dict:
 
     best_algo = min(all_rmse, key=all_rmse.get)
 
+    # Overall status: 'miss' if anything was trained, else 'warm'/'fresh'
+    if "miss" in all_cache.values():
+        overall = "miss"
+    elif "warm" in all_cache.values():
+        overall = "warm"
+    else:
+        overall = "fresh"
+
     return {
         "symbol":          symbol,
         "company_name":    details["scheme_name"],
@@ -228,17 +293,20 @@ def run_all_forecast(job, symbol: str) -> dict:
         "all_rmse":        all_rmse,
         "best_algo":       best_algo,
         "regime":          _regime_to_dict(regime),
-        "historical":      _historical_ohlc(),
+        "historical":      _historical_ohlc(hist_df),
+        "cache_status":    overall,
+        "cache_label":     CACHE_STATUS_LABEL.get(overall, ""),
+        "cache_per_algo":  all_cache,
     }
 
 
 def run_regime_analysis(symbol: str) -> dict:
     """Fetch data, detect regime + candlestick patterns."""
-    df, details = fetch_data(symbol)
+    df, details, hist_df = fetch_data(symbol)
 
     regime = detect_regime(df)
 
-    pattern_df, active_pats = detect_patterns(config.HISTORIC_DATA)
+    pattern_df, active_pats = detect_patterns(hist_df)
     patterns = [
         {
             "name":      pat.replace("_", " "),
@@ -258,7 +326,7 @@ def run_regime_analysis(symbol: str) -> dict:
         "regime":       _regime_to_dict(regime),
         "patterns":     patterns,
         "insight":      insight,
-        "historical":   _historical_ohlc(),
+        "historical":   _historical_ohlc(hist_df),
     }
 
 

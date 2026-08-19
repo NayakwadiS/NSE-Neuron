@@ -22,7 +22,10 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<IChartApi | null>(null)
 
+  const hasData = historical.some(d => d.close != null && d.date)
+
   useEffect(() => {
+    if (!hasData) return
     if (!containerRef.current) return
     const container = containerRef.current
 
@@ -76,15 +79,31 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
 
     // Use close as fallback for open so candlesticks always render,
     // even when the API omits the open column for some symbols.
-    const candleData: CandlestickData[] = historical
-      .filter(d => d.close != null && d.date)
-      .map(d => ({
-        time:  d.date as Time,
-        open:  d.open  ?? d.close,   // fallback: doji-style candle
-        high:  d.high  ?? d.close,
-        low:   d.low   ?? d.close,
-        close: d.close,
-      }))
+    // lightweight-charts requires strictly ascending, unique timestamps —
+    // sort + de-duplicate (keep last) defensively so a bad/duplicate date
+    // from the API never throws and silently blanks the whole chart.
+    const dedupeSortByTime = <T extends { time: Time }>(rows: T[]): T[] => {
+      const sorted = [...rows].sort((a, b) => {
+        const ta = a.time as unknown as string
+        const tb = b.time as unknown as string
+        return ta < tb ? -1 : ta > tb ? 1 : 0
+      })
+      const map = new Map<string, T>()
+      for (const row of sorted) map.set(row.time as unknown as string, row) // keep last
+      return Array.from(map.values())
+    }
+
+    const candleData: CandlestickData[] = dedupeSortByTime(
+      historical
+        .filter(d => d.close != null && d.date)
+        .map(d => ({
+          time:  d.date as Time,
+          open:  d.open  ?? d.close,   // fallback: doji-style candle
+          high:  d.high  ?? d.close,
+          low:   d.low   ?? d.close,
+          close: d.close,
+        }))
+    )
     candleSeries.setData(candleData)
 
     // ── Forecast close price line ──────────────────────────────────────────
@@ -95,10 +114,12 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
       title:     `${algoLabel} Forecast`,
     })
 
-    const forecastData: LineData[] = forecast.map(d => ({
-      time:  d.date as Time,
-      value: d.close,
-    }))
+    const forecastData: LineData[] = dedupeSortByTime(
+      forecast.map(d => ({
+        time:  d.date as Time,
+        value: d.close,
+      }))
+    )
 
     // Connect last historical close to first forecast point
     if (candleData.length > 0 && forecastData.length > 0) {
@@ -155,7 +176,7 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
         chartRef.current = null
       }
     }
-  }, [historical, forecast, algoLabel])
+  }, [historical, forecast, algoLabel, hasData])
 
   return (
     <div className="rounded-xl border border-slate-700 bg-slate-900/80 overflow-hidden">
@@ -174,8 +195,13 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
           )}
         </div>
       </div>
-      <div ref={containerRef} className="w-full" style={{ minHeight: 420 }} />
+      <div ref={containerRef} className="w-full" style={{ minHeight: 420 }}>
+        {!hasData && (
+          <div className="flex items-center justify-center h-[420px] text-sm text-slate-500">
+            No historical price data available to chart.
+          </div>
+        )}
+      </div>
     </div>
   )
 }
-

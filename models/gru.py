@@ -1,5 +1,6 @@
 from models import *
 from models.base_model import BaseModel
+from utils import model_registry
 from config import (
     FORECAST_DAYS,
     FEATURE_COLUMNS,
@@ -28,6 +29,8 @@ class GRUModel(BaseModel):
         self.n_features = None
         self.test_data = None
         self.df_features = None
+        self.cache_status = 'miss'      # 'miss' | 'fresh' | 'warm'
+        self.cache_meta = {}
 
     # ------------------------------------------------------------------
     # Helper: turn raw DataFrame into spread-based model DataFrame
@@ -96,19 +99,58 @@ class GRUModel(BaseModel):
         return math.sqrt(mean_squared_error(y[:, 0], preds[:, 0]))
 
     # ------------------------------------------------------------------
+    # Architecture definition (kept separate so it can be skipped on cache hit)
+    # ------------------------------------------------------------------
+    def _build(self):
+        # 64 units: good balance of capacity vs training speed for financial time series
+        model = Sequential()
+        model.add(GRU(self.units, return_sequences=True,
+                      input_shape=(self.time_step, self.n_features)))
+        model.add(GRU(self.units, return_sequences=True))
+        model.add(GRU(self.units))
+        model.add(Dense(self.n_features))
+        model.compile(loss='mean_squared_error', optimizer='adam')
+        return model
+
+    # ------------------------------------------------------------------
+    # Cache signature — everything that must match for weight reuse
+    # ------------------------------------------------------------------
+    def _signature(self, df):
+        return model_registry.build_signature('GRU', df, {
+            'time_step':  self.time_step,
+            'units':      self.units,
+            'n_features': self.n_features,
+            'arch':       'stacked-gru-3x',
+        })
+
+    # ------------------------------------------------------------------
     # Main entry: train model + forecast future days
     # ------------------------------------------------------------------
-    def run(self, df):
+    def run(self, df, symbol=None, force_retrain=False):
         """
-        Full pipeline: preprocess → build model → fit → forecast.
-        Returns (forecasted_stock_price, rmse) same shape as standalone gru().
+        Full pipeline: preprocess → load-or-build model → fit → forecast.
+        `symbol` enables the per-symbol weight cache.
         """
         df_features, df_model = self._prepare_data(df)
         self.df_features = df_features
         self.n_features = df_model.shape[1]
 
-        # Scale
-        df_scaled = self.scaler.fit_transform(df_model)
+        # ── Try the weight cache ─────────────────────────────────────────────
+        sig = self._signature(df)
+        cached, cached_scaler, status, meta = model_registry.load(
+            symbol, 'GRU', sig, force_retrain=force_retrain
+        )
+        self.cache_status = status
+        self.cache_meta   = meta
+
+        # Scale — only fit a new scaler on a cache miss, otherwise cached weights
+        # would receive data in a different numeric space.
+        if status == 'miss':
+            df_scaled = self.scaler.fit_transform(df_model)
+        else:
+            self.scaler = cached_scaler
+            self.model  = cached
+            df_scaled   = self.scaler.transform(df_model)
 
         # Train / test split
         training_size = int(len(df_scaled) * TRAIN_TEST_SPLIT)
@@ -123,23 +165,26 @@ class GRUModel(BaseModel):
         X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], self.n_features)
         X_test  = X_test.reshape(X_test.shape[0],   X_test.shape[1],  self.n_features)
 
-        # Build stacked GRU
-        # 64 units: good balance of capacity vs training speed for financial time series
-        self.model = Sequential()
-        self.model.add(GRU(self.units, return_sequences=True,
-                           input_shape=(self.time_step, self.n_features)))
-        self.model.add(GRU(self.units, return_sequences=True))
-        self.model.add(GRU(self.units))
-        self.model.add(Dense(self.n_features))
-        self.model.compile(loss='mean_squared_error', optimizer='adam')
-
-        # Train (uses BaseModel.fit)
-        self.fit(X_train, y_train)
+        # ── Train / fine-tune / skip ─────────────────────────────────────────
+        if status == 'miss':
+            self.model = self._build()
+            self.fit(X_train, y_train)
+        elif status == 'warm':
+            print("  [Cache] Warm-starting GRU on newest windows…")
+            model_registry.warm_start(self.model, X_train, y_train,
+                                      batch_size=BATCH_SIZE)
+        else:
+            print("  [Cache] Using cached GRU weights as-is (no training).")
 
         # ── RMSE on full dataset for fair cross-model benchmarking ────────────
         X_all, y_all = self._create_dataset(df_scaled, self.time_step)
         X_all = X_all.reshape(X_all.shape[0], X_all.shape[1], self.n_features)
         rmse = {'close': self.evaluate(X_all, y_all)}
+
+        # ── Persist weights (skip when nothing changed) ───────────────────────
+        if status != 'fresh':
+            model_registry.save(symbol, 'GRU', self.model, self.scaler, sig,
+                                {'rmse': rmse['close']})
 
         # Forecast FORECAST_DAYS into the future
         forecasted_stock_price = self._forecast(df_features)
@@ -185,7 +230,13 @@ class GRUModel(BaseModel):
 # ----------------------------------------------------------------------
 # Standalone function — calling interface from main.py stays unchanged
 # ----------------------------------------------------------------------
-def gru(df):
-    """Entry point called from main.py. Internally uses GRUModel class."""
+def gru(df, symbol=None, force_retrain=False, return_model=False):
+    """
+    Entry point called from main.py / the API. Internally uses GRUModel.
+    `symbol` enables the per-symbol weight cache.
+    """
     model = GRUModel()
-    return model.run(df)
+    pred, rmse = model.run(df, symbol=symbol, force_retrain=force_retrain)
+    if return_model:
+        return pred, rmse, model
+    return pred, rmse

@@ -12,7 +12,8 @@ if ROOT_DIR not in sys.path:
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.backend.routers import forecast, analysis, data
+from src.backend.routers import forecast, analysis, data, cache
+
 
 app = FastAPI(
     title="NSE-Neuron API",
@@ -31,6 +32,7 @@ app.add_middleware(
 app.include_router(forecast.router, prefix="/api", tags=["Forecast"])
 app.include_router(analysis.router, prefix="/api", tags=["Analysis"])
 app.include_router(data.router,     prefix="/api", tags=["Data"])
+app.include_router(cache.router,    prefix="/api", tags=["Model Cache"])
 
 
 @app.get("/")

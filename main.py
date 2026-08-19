@@ -24,39 +24,46 @@ choice = input(
     "Selection: "
 )
 
+# Cached weights are reused automatically when they are still valid for this
+# symbol + model. Answer 'y' here to ignore the cache and train from scratch.
+force_retrain = input(
+    "Force retrain (ignore cached weights)? [y/N]: "
+).strip().lower() in ('y', 'yes')
+
 
 @getDataFrame(scheme_code)
 def forecasting_nse_stocks(df, details, choice):
     signals = None
     pred    = None
     rmse    = None
+    sym     = details['scheme_code']
 
     match choice:
         case '1':
-            pred, rmse = lstm(df)
+            pred, rmse = lstm(df, symbol=sym, force_retrain=force_retrain)
             print("\nRunning LSTM Classifier...")
-            signals = lstm_classifier(df, pred)
+            signals = lstm_classifier(df, pred, symbol=sym, force_retrain=force_retrain)
             regime  = detect_regime(df)
             if regime['sufficient_data'] and signals:
                 signals = apply_regime_confidence(signals, regime)
         case '2':
-            pred, rmse = bilstm(df)
+            pred, rmse = bilstm(df, symbol=sym, force_retrain=force_retrain)
             print("\nRunning BiLSTM Classifier...")
-            signals = bilstm_classifier(df, pred)
+            signals = bilstm_classifier(df, pred, symbol=sym, force_retrain=force_retrain)
             regime  = detect_regime(df)
             if regime['sufficient_data'] and signals:
                 signals = apply_regime_confidence(signals, regime)
         case '3':
-            pred, rmse = gru(df)
+            pred, rmse = gru(df, symbol=sym, force_retrain=force_retrain)
             print("\nRunning GRU Classifier...")
-            signals = gru_classifier(df, pred)
+            signals = gru_classifier(df, pred, symbol=sym, force_retrain=force_retrain)
             regime  = detect_regime(df)
             if regime['sufficient_data'] and signals:
                 signals = apply_regime_confidence(signals, regime)
         case '4':
-            pred, rmse = cnn_lstm(df)
+            pred, rmse = cnn_lstm(df, symbol=sym, force_retrain=force_retrain)
             print("\nRunning CNN-LSTM Classifier...")
-            signals = cnn_lstm_classifier(df, pred)
+            signals = cnn_lstm_classifier(df, pred, symbol=sym, force_retrain=force_retrain)
             regime  = detect_regime(df)
             if regime['sufficient_data'] and signals:
                 signals = apply_regime_confidence(signals, regime)
@@ -68,7 +75,7 @@ def forecasting_nse_stocks(df, details, choice):
 
             for name, func in zip(ALGO_NAMES, algo_funcs):
                 print(f"\n[{name}] Training...")
-                p, r = func(df)
+                p, r = func(df, symbol=sym, force_retrain=force_retrain)
                 all_preds[name] = p
                 all_rmse[name]  = r['close'] if isinstance(r, dict) else r
 
@@ -147,7 +154,7 @@ def forecasting_nse_stocks(df, details, choice):
 
                 for name, func in zip(ALGO_NAMES, algo_funcs):
                     print(f"\n[{name}] Training...")
-                    p, r = func(df)
+                    p, r = func(df, symbol=sym, force_retrain=force_retrain)
                     all_preds[name] = p
                     all_rmse[name]  = r['close'] if isinstance(r, dict) else r
 
@@ -182,14 +189,15 @@ def forecasting_nse_stocks(df, details, choice):
             chosen_func = model_map[model_choice]
             chosen_name = name_map[model_choice]
 
-            pred, rmse = chosen_func(df)
+            pred, rmse = chosen_func(df, symbol=sym, force_retrain=force_retrain)
 
             # Run classifier only when LSTM is selected — mirrors case '1' behaviour
             signals = None
             if model_choice in ['1', '2', '3', '4']:
                 print("\nRunning Classifier...")
                 classifier = config.CLASSIFIER_LIST.get(model_choice)
-                signals = globals()[classifier](df, pred)
+                signals = globals()[classifier](df, pred, symbol=sym,
+                                                force_retrain=force_retrain)
                 if regime['sufficient_data'] and signals:
                     signals = apply_regime_confidence(signals, regime)
 
