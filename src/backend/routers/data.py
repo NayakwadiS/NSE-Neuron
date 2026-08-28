@@ -5,6 +5,8 @@ GET /api/symbols?q=       — search NSE symbols
 GET /api/historical/{sym} — historical OHLC for charting
 """
 from fastapi import APIRouter, HTTPException, Query
+import pandas as pd
+
 from src.backend.services.nse_service import search_symbols, fetch_data
 
 router = APIRouter()
@@ -29,11 +31,16 @@ def historical(symbol: str, days: int = 120):
         if hist_df is None:
             raise HTTPException(status_code=404, detail="No data")
 
-        cols  = [c for c in ["date", "open", "high", "low", "close"] if c in hist_df.columns]
-        tail  = hist_df[cols].tail(days).dropna()
+        cols  = [c for c in ["date", "open", "high", "low", "close", "volume"] if c in hist_df.columns]
+        mandatory = [c for c in ["date", "high", "low", "close"] if c in cols]
+        tail  = hist_df[cols].tail(days).dropna(subset=mandatory)
         records = []
         for _, row in tail.iterrows():
-            rec = {k: float(row[k]) if k != "date" else str(row[k]) for k in cols}
+            rec = {
+                k: str(row[k]) if k == "date"
+                else (float(row[k]) if pd.notna(row[k]) else None)
+                for k in cols
+            }
             records.append(rec)
 
         return {"symbol": sym, "data": records}

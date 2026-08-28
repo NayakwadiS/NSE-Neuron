@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   createChart,
   ColorType,
@@ -7,10 +7,11 @@ import {
   type IChartApi,
   type ISeriesApi,
   type CandlestickData,
+  type HistogramData,
   type LineData,
   type Time,
 } from 'lightweight-charts'
-import { Maximize2, Download } from 'lucide-react'
+import { Maximize2, Download, BarChart3 } from 'lucide-react'
 import type { OHLCPoint, ForecastDay } from '../types'
 
 interface Props {
@@ -23,12 +24,21 @@ function isDarkMode(): boolean {
   return document.documentElement.classList.contains('dark')
 }
 
+/** Compact volume formatting: 1.2Cr / 3.4L / 56.7K */
+function formatVolume(v: number): string {
+  if (v >= 1e7) return `${(v / 1e7).toFixed(2)}Cr`
+  if (v >= 1e5) return `${(v / 1e5).toFixed(2)}L`
+  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`
+  return String(Math.round(v))
+}
+
 interface HoverOhlc {
   date: string
   open: number
   high: number
   low: number
   close: number
+  volume?: number
 }
 
 export default function ForecastChart({ historical, forecast, algoLabel }: Props) {
@@ -37,8 +47,14 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const [isDark, setIsDark] = useState(isDarkMode)
   const [hover, setHover] = useState<HoverOhlc | null>(null)
+  const [showVolume, setShowVolume] = useState(true)
 
   const hasData = historical.some(d => d.close != null && d.date)
+  // Only offer the volume pane when the API actually returned volume numbers
+  const hasVolume = useMemo(
+    () => historical.some(d => d.volume != null && Number(d.volume) > 0),
+    [historical],
+  )
 
   // Track theme toggle so the chart colors update without a full page reload
   useEffect(() => {
@@ -135,6 +151,37 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
     )
     candleSeries.setData(candleData)
 
+    // ── Volume histogram (overlay pane pinned to the bottom) ───────────────
+    let volumeSeries: ISeriesApi<'Histogram'> | null = null
+    if (hasVolume && showVolume) {
+      volumeSeries = chart.addHistogramSeries({
+        priceFormat:  { type: 'volume' },
+        priceScaleId: 'volume',       // separate overlay scale
+      })
+      chart.priceScale('volume').applyOptions({
+        scaleMargins: { top: 0.78, bottom: 0 },
+      })
+
+      const upColor   = isDark ? 'rgba(34,197,94,0.45)'  : 'rgba(34,197,94,0.55)'
+      const downColor = isDark ? 'rgba(239,68,68,0.45)'  : 'rgba(239,68,68,0.55)'
+
+      const volumeData: HistogramData[] = dedupeSortByTime(
+        historical
+          .filter(d => d.date && d.volume != null && Number(d.volume) > 0)
+          .map(d => ({
+            time:  d.date as Time,
+            value: Number(d.volume),
+            color: d.close >= (d.open ?? d.close) ? upColor : downColor,
+          }))
+      )
+      volumeSeries.setData(volumeData)
+
+      // Reserve room at the bottom so candles never sit on top of the bars
+      chart.priceScale('right').applyOptions({
+        scaleMargins: { top: 0.08, bottom: 0.26 },
+      })
+    }
+
     // ── Forecast close price line ──────────────────────────────────────────
     const forecastSeries = chart.addLineSeries({
       color:     '#818cf8',
@@ -192,12 +239,16 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
       }
       const bar = param.seriesData.get(candleSeries) as CandlestickData | undefined
       if (!bar) { setHover(null); return }
+      const volBar = volumeSeries
+        ? (param.seriesData.get(volumeSeries) as HistogramData | undefined)
+        : undefined
       setHover({
         date:  param.time as unknown as string,
         open:  bar.open,
         high:  bar.high,
         low:   bar.low,
         close: bar.close,
+        volume: volBar?.value,
       })
     })
 
@@ -222,7 +273,7 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
         chartRef.current = null
       }
     }
-  }, [historical, forecast, algoLabel, hasData, isDark])
+  }, [historical, forecast, algoLabel, hasData, hasVolume, showVolume, isDark])
 
   const handleFit = () => chartRef.current?.timeScale().fitContent()
 
@@ -255,6 +306,20 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
           )}
           {hasData && (
             <span className="flex items-center gap-1.5 border-l border-slate-300 dark:border-slate-700 pl-3">
+              {hasVolume && (
+                <button
+                  onClick={() => setShowVolume(v => !v)}
+                  title={showVolume ? 'Hide volume' : 'Show volume'}
+                  aria-pressed={showVolume}
+                  className={`p-1 rounded transition hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                    showVolume
+                      ? 'text-indigo-600 dark:text-indigo-400'
+                      : 'hover:text-indigo-500 dark:hover:text-indigo-400'
+                  }`}
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
+                </button>
+              )}
               <button
                 onClick={handleFit}
                 title="Fit chart to screen"
@@ -283,6 +348,9 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
               <span>H <span className="text-emerald-600 dark:text-emerald-400">{hover.high.toFixed(2)}</span></span>
               <span>L <span className="text-red-600 dark:text-red-400">{hover.low.toFixed(2)}</span></span>
               <span>C <span className="font-semibold text-slate-900 dark:text-white">{hover.close.toFixed(2)}</span></span>
+              {hover.volume != null && (
+                <span>V <span className="text-indigo-600 dark:text-indigo-400">{formatVolume(hover.volume)}</span></span>
+              )}
             </>
           ) : (
             <span className="text-slate-400 dark:text-slate-600">Hover the chart for OHLC values</span>

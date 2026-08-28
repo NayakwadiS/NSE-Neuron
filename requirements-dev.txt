@@ -1,0 +1,9 @@
+# Development / test-only dependencies
+# Install with:  pip install -r requirements-dev.txt
+-r requirements.txt
+
+pytest>=7.4
+httpx>=0.24          # required by fastapi.testclient
+fastapi
+uvicorn[standard]
+
