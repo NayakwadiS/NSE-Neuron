@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   createChart,
   ColorType,
@@ -7,9 +7,11 @@ import {
   type IChartApi,
   type ISeriesApi,
   type CandlestickData,
+  type HistogramData,
   type LineData,
   type Time,
 } from 'lightweight-charts'
+import { Maximize2, Download, BarChart3 } from 'lucide-react'
 import type { OHLCPoint, ForecastDay } from '../types'
 
 interface Props {
@@ -18,11 +20,49 @@ interface Props {
   algoLabel:   string
 }
 
+function isDarkMode(): boolean {
+  return document.documentElement.classList.contains('dark')
+}
+
+/** Compact volume formatting: 1.2Cr / 3.4L / 56.7K */
+function formatVolume(v: number): string {
+  if (v >= 1e7) return `${(v / 1e7).toFixed(2)}Cr`
+  if (v >= 1e5) return `${(v / 1e5).toFixed(2)}L`
+  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`
+  return String(Math.round(v))
+}
+
+interface HoverOhlc {
+  date: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume?: number
+}
+
 export default function ForecastChart({ historical, forecast, algoLabel }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<IChartApi | null>(null)
+  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const [isDark, setIsDark] = useState(isDarkMode)
+  const [hover, setHover] = useState<HoverOhlc | null>(null)
+  const [showVolume, setShowVolume] = useState(true)
 
   const hasData = historical.some(d => d.close != null && d.date)
+  // Only offer the volume pane when the API actually returned volume numbers
+  const hasVolume = useMemo(
+    () => historical.some(d => d.volume != null && Number(d.volume) > 0),
+    [historical],
+  )
+
+  // Track theme toggle so the chart colors update without a full page reload
+  useEffect(() => {
+    const observer = new MutationObserver(() => setIsDark(isDarkMode()))
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
+
 
   useEffect(() => {
     if (!hasData) return
@@ -38,6 +78,10 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
     let rafId: number
     let ro: ResizeObserver
 
+    const colors = isDark
+      ? { bg: '#0f172a', text: '#94a3b8', grid: '#1e293b', border: '#1e293b' }
+      : { bg: '#ffffff', text: '#475569', grid: '#e2e8f0', border: '#cbd5e1' }
+
     const initChart = () => {
       // If the container still has no width (e.g. tab hidden), retry next frame
       const containerWidth = container.clientWidth
@@ -49,17 +93,17 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
     // ── Create chart ───────────────────────────────────────────────────────
     const chart = createChart(container, {
       layout: {
-        background:  { type: ColorType.Solid, color: '#0f172a' },
-        textColor:   '#94a3b8',
+        background:  { type: ColorType.Solid, color: colors.bg },
+        textColor:   colors.text,
       },
       grid: {
-        vertLines: { color: '#1e293b' },
-        horzLines: { color: '#1e293b' },
+        vertLines: { color: colors.grid },
+        horzLines: { color: colors.grid },
       },
       crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: '#1e293b' },
+      rightPriceScale: { borderColor: colors.border },
       timeScale: {
-        borderColor:     '#1e293b',
+        borderColor:     colors.border,
         timeVisible:     true,
         secondsVisible:  false,
       },
@@ -76,6 +120,7 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
       wickUpColor:   '#22c55e',
       wickDownColor: '#ef4444',
     })
+    candleSeriesRef.current = candleSeries
 
     // Use close as fallback for open so candlesticks always render,
     // even when the API omits the open column for some symbols.
@@ -105,6 +150,37 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
         }))
     )
     candleSeries.setData(candleData)
+
+    // ── Volume histogram (overlay pane pinned to the bottom) ───────────────
+    let volumeSeries: ISeriesApi<'Histogram'> | null = null
+    if (hasVolume && showVolume) {
+      volumeSeries = chart.addHistogramSeries({
+        priceFormat:  { type: 'volume' },
+        priceScaleId: 'volume',       // separate overlay scale
+      })
+      chart.priceScale('volume').applyOptions({
+        scaleMargins: { top: 0.78, bottom: 0 },
+      })
+
+      const upColor   = isDark ? 'rgba(34,197,94,0.45)'  : 'rgba(34,197,94,0.55)'
+      const downColor = isDark ? 'rgba(239,68,68,0.45)'  : 'rgba(239,68,68,0.55)'
+
+      const volumeData: HistogramData[] = dedupeSortByTime(
+        historical
+          .filter(d => d.date && d.volume != null && Number(d.volume) > 0)
+          .map(d => ({
+            time:  d.date as Time,
+            value: Number(d.volume),
+            color: d.close >= (d.open ?? d.close) ? upColor : downColor,
+          }))
+      )
+      volumeSeries.setData(volumeData)
+
+      // Reserve room at the bottom so candles never sit on top of the bars
+      chart.priceScale('right').applyOptions({
+        scaleMargins: { top: 0.08, bottom: 0.26 },
+      })
+    }
 
     // ── Forecast close price line ──────────────────────────────────────────
     const forecastSeries = chart.addLineSeries({
@@ -155,6 +231,27 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
       forecastSeries.setMarkers(markers)
     }
 
+    // ── Hover legend: show OHLC values under the crosshair ─────────────────
+    chart.subscribeCrosshairMove(param => {
+      if (!param.time || !param.seriesData.has(candleSeries)) {
+        setHover(null)
+        return
+      }
+      const bar = param.seriesData.get(candleSeries) as CandlestickData | undefined
+      if (!bar) { setHover(null); return }
+      const volBar = volumeSeries
+        ? (param.seriesData.get(volumeSeries) as HistogramData | undefined)
+        : undefined
+      setHover({
+        date:  param.time as unknown as string,
+        open:  bar.open,
+        high:  bar.high,
+        low:   bar.low,
+        close: bar.close,
+        volume: volBar?.value,
+      })
+    })
+
     // ── Resize observer ────────────────────────────────────────────────────
     ro = new ResizeObserver(entries => {
       for (const entry of entries) {
@@ -176,15 +273,29 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
         chartRef.current = null
       }
     }
-  }, [historical, forecast, algoLabel, hasData])
+  }, [historical, forecast, algoLabel, hasData, hasVolume, showVolume, isDark])
+
+  const handleFit = () => chartRef.current?.timeScale().fitContent()
+
+  const handleExportPng = () => {
+    if (!chartRef.current) return
+    const canvas = chartRef.current.takeScreenshot()
+    const url = canvas.toDataURL('image/png')
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${algoLabel.replace(/\s+/g, '_')}_chart.png`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
 
   return (
-    <div className="rounded-xl border border-slate-700 bg-slate-900/80 overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-700 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-white">
+    <div className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/80 overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-300 dark:border-slate-700 flex items-center justify-between flex-wrap gap-2">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
           {forecast.length > 0 ? 'Candlestick + Forecast' : 'Historical Candlestick'}
         </h3>
-        <div className="flex items-center gap-4 text-xs text-slate-500">
+        <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-500">
           <span className="flex items-center gap-1.5">
             <span className="w-6 h-0.5 bg-emerald-500 inline-block" /> Historical
           </span>
@@ -193,8 +304,59 @@ export default function ForecastChart({ historical, forecast, algoLabel }: Props
               <span className="w-6 h-0.5 bg-indigo-400 inline-block border-dashed border" /> {algoLabel}
             </span>
           )}
+          {hasData && (
+            <span className="flex items-center gap-1.5 border-l border-slate-300 dark:border-slate-700 pl-3">
+              {hasVolume && (
+                <button
+                  onClick={() => setShowVolume(v => !v)}
+                  title={showVolume ? 'Hide volume' : 'Show volume'}
+                  aria-pressed={showVolume}
+                  className={`p-1 rounded transition hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                    showVolume
+                      ? 'text-indigo-600 dark:text-indigo-400'
+                      : 'hover:text-indigo-500 dark:hover:text-indigo-400'
+                  }`}
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button
+                onClick={handleFit}
+                title="Fit chart to screen"
+                className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-500 dark:hover:text-indigo-400 transition"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={handleExportPng}
+                title="Export chart as PNG"
+                className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-500 dark:hover:text-indigo-400 transition"
+              >
+                <Download className="w-3.5 h-3.5" />
+              </button>
+            </span>
+          )}
         </div>
       </div>
+      {hasData && (
+        <div className="px-4 py-1.5 border-b border-slate-200 dark:border-slate-800/70 text-xs font-mono
+                        text-slate-500 dark:text-slate-400 flex items-center gap-3 min-h-[26px]">
+          {hover ? (
+            <>
+              <span className="text-slate-400 dark:text-slate-600">{hover.date}</span>
+              <span>O <span className="text-slate-700 dark:text-slate-300">{hover.open.toFixed(2)}</span></span>
+              <span>H <span className="text-emerald-600 dark:text-emerald-400">{hover.high.toFixed(2)}</span></span>
+              <span>L <span className="text-red-600 dark:text-red-400">{hover.low.toFixed(2)}</span></span>
+              <span>C <span className="font-semibold text-slate-900 dark:text-white">{hover.close.toFixed(2)}</span></span>
+              {hover.volume != null && (
+                <span>V <span className="text-indigo-600 dark:text-indigo-400">{formatVolume(hover.volume)}</span></span>
+              )}
+            </>
+          ) : (
+            <span className="text-slate-400 dark:text-slate-600">Hover the chart for OHLC values</span>
+          )}
+        </div>
+      )}
       <div ref={containerRef} className="w-full" style={{ minHeight: 420 }}>
         {!hasData && (
           <div className="flex items-center justify-center h-[420px] text-sm text-slate-500">

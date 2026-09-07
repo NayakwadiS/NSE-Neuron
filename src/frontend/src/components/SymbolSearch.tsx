@@ -5,9 +5,10 @@ import type { SymbolResult } from '../types'
 interface Props {
   value:    string
   onChange: (symbol: string, name: string) => void
+  onEnter?: () => void
 }
 
-export default function SymbolSearch({ value, onChange }: Props) {
+export default function SymbolSearch({ value, onChange, onEnter }: Props) {
   const [query,    setQuery]    = useState(value)
   const [results,  setResults]  = useState<SymbolResult[]>([])
   const [open,     setOpen]     = useState(false)
@@ -48,7 +49,7 @@ export default function SymbolSearch({ value, onChange }: Props) {
 
   return (
     <div ref={wrapRef} className="relative">
-      <label className="block text-xs font-medium text-slate-400 mb-1.5">
+      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
         NSE Symbol
       </label>
       <div className="relative">
@@ -57,9 +58,18 @@ export default function SymbolSearch({ value, onChange }: Props) {
           value={query}
           onChange={e => handleInput(e.target.value)}
           onFocus={() => results.length > 0 && setOpen(true)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              setOpen(false)
+              if (results.length > 0) pick(results[0])
+              onEnter?.()
+            } else if (e.key === 'Escape') {
+              setOpen(false)
+            }
+          }}
           placeholder="e.g. INFY, TCS, SBIN…"
-          className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5
-                     text-sm text-white placeholder-slate-500 outline-none
+          className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2.5
+                     text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none
                      focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40 transition"
         />
         {loading && (
@@ -71,15 +81,15 @@ export default function SymbolSearch({ value, onChange }: Props) {
 
       {open && results.length > 0 && (
         <ul className="absolute z-50 w-full mt-1 max-h-56 overflow-y-auto
-                        bg-slate-800 border border-slate-700 rounded-lg shadow-xl">
+                        bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg shadow-xl">
           {results.map(sym => (
             <li
               key={sym.symbol}
               onMouseDown={() => pick(sym)}
-              className="px-3 py-2 cursor-pointer hover:bg-slate-700 flex items-baseline gap-2"
+              className="px-3 py-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 flex items-baseline gap-2"
             >
-              <span className="font-mono text-sm font-semibold text-indigo-400">{sym.symbol}</span>
-              <span className="text-xs text-slate-400 truncate">{sym.name}</span>
+              <span className="font-mono text-sm font-semibold text-indigo-500 dark:text-indigo-400">{sym.symbol}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{sym.name}</span>
             </li>
           ))}
         </ul>
