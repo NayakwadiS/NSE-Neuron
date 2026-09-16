@@ -114,13 +114,13 @@ def fetch_data(symbol: str):
 
 
 def _historical_ohlc(hist_df, n: int = 120) -> list:
-    """Return last n rows of OHLC from the given historic dataframe (includes open)."""
+    """Return last n rows of OHLCV from the given historic dataframe."""
     if hist_df is None:
         return []
     # Mandatory columns — rows without these are useless for the chart
     mandatory = [c for c in ["date", "high", "low", "close"] if c in hist_df.columns]
-    # Optional: include open only when the column exists
-    optional  = [c for c in ["open"] if c in hist_df.columns]
+    # Optional: include open / volume only when the columns exist
+    optional  = [c for c in ["open", "volume"] if c in hist_df.columns]
     cols = mandatory + optional
 
     tail = hist_df[cols].tail(n).copy()

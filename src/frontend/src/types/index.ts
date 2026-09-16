@@ -36,11 +36,12 @@ export interface PatternInfo {
 }
 
 export interface OHLCPoint {
-  date:  string
-  open?: number
-  high:  number
-  low:   number
-  close: number
+  date:    string
+  open?:   number
+  high:    number
+  low:     number
+  close:   number
+  volume?: number | null
 }
 
 // ── Model weight cache ────────────────────────────────────────────────────────
