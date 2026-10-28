@@ -63,5 +63,10 @@ export const deleteCachedModel = async (symbol: string, model: string) => {
   return data
 }
 
+export const purgeExpiredModels = async (): Promise<{ purged: number; max_age_days: number }> => {
+  const { data } = await api.post('/models/cached/purge')
+  return data
+}
+
 export default api
 

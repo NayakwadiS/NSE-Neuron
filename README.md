@@ -38,6 +38,7 @@ Available as a **web UI** (one-click launch) and a **command-line tool**.
 - 🔍 **Regime detection** — identifies BULL / BEAR / SIDEWAYS market and recommends the best model
 - 🕯️ **Candlestick patterns** — detects active patterns and cross-references them with the regime
 - 📈 **Interactive chart** — zoomable OHLC chart with forecast overlay and signal markers
+- 🗄️ **Cached models dashboard** — browse, filter, and purge trained model weights across every symbol from the UI
 
 ---
 
