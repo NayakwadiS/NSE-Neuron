@@ -216,3 +216,15 @@ saved_models/
 *.h5
 *.pkl
 
+
+# Frontend (Node / Vite)
+node_modules/
+src/frontend/node_modules/
+src/frontend/dist/
+src/frontend/.vite/
+.vite/
+dist/
+*.local
+
+# Misc local scratch scripts
+models/test_nselib.py
